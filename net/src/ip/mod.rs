@@ -16,6 +16,8 @@ mod checksum;
 pub mod v4;
 pub mod v6;
 
+pub mod fragment;
+
 pub use checksum::Checksum;
 
 impl Interface {
@@ -32,7 +34,7 @@ impl Interface {
 		};
 	}
 
-	pub(crate) fn write(&mut self, _: CX![], protocol: Protocol, addr: IpAddr, tos: ToS, f: impl for<'a> FnOnce(Cursor<'a>, Checksum) + 'static) {
+	pub(crate) fn write(&mut self, _: CX![], protocol: Protocol, addr: IpAddr, tos: ToS, f: impl FnOnce(Cursor) + 'static) {
 		let v4 = self.v4;
 		#[cfg(feature = "pcap")]
 		let pcap = self.pcap.clone();
@@ -50,14 +52,32 @@ impl Interface {
 		)
 	}
 
-	pub fn handle<'a>(&'a self, proto: Protocol, addr: IpAddr, csum: impl FnOnce() -> Checksum, buf: &Slice) -> Result<impl FnOnce(Slice) + 'a> {
+	pub fn handle<'a>(&'a self, proto: Protocol, addr: IpAddr, buf: Slice) -> Result {
 		match proto {
-			Protocol::Udp => self.udp.recv(addr, csum, buf),
+			Protocol::Udp => self.udp.recv(self, addr, buf),
 			Protocol::Tcp => {
 				log::debug!("TCP not implemented");
 				Err(())
 			}
-			Protocol::Unknown(tag) => Err(log::debug!("Unimplemented protocol: {tag}")),
+			Protocol::Unknown => Err(log::debug!("Unimplemented IP protocol")),
+		}
+	}
+
+	#[inline]
+	pub(crate) fn pseudo_checksum(&self, proto: Protocol, addr: IpAddr) -> Checksum {
+		match addr {
+			IpAddr::V4(addr) => {
+				let mut csum = Checksum::with(bytes::cast(&addr));
+				csum.push_chunk(bytes::cast(&self.v4.addr));
+				csum.push_chunk(&[0, 0, 0, proto.into()]);
+				csum
+			}
+			IpAddr::V6(addr) => {
+				let mut csum = Checksum::with(bytes::cast(&addr));
+				csum.push_chunk(bytes::cast(&self.v6.addr));
+				csum.push_chunk(&[0, 0, 0, proto.into()]);
+				csum
+			}
 		}
 	}
 }
@@ -150,10 +170,10 @@ pub enum ECN {
 
 #[repr(u8)]
 #[bitsize(8)]
-#[derive(Clone, Copy, FromBits)]
+#[derive(Hash, PartialEq, Eq, Clone, Copy, FromBits)]
 pub enum Protocol {
 	Tcp = 6,
 	Udp = 17,
 	#[fallback]
-	Unknown(u8),
+	Unknown,
 }

@@ -23,6 +23,7 @@ pub struct Interface {
 
 	v4: v4::Interface,
 	v6: v6::Interface,
+	fragment: ip::fragment::Store,
 
 	dns: dns::Interface,
 
@@ -45,6 +46,7 @@ impl Interface {
 
 			v4: v4.into(),
 			v6: v6.into(),
+			fragment: ip::fragment::Store::default(),
 
 			dns,
 

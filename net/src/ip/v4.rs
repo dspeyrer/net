@@ -5,37 +5,24 @@ use bilge::prelude::*;
 use collections::bytes::{Cursor, Slice};
 use log::warn;
 use utils::bytes::{self, Cast};
-use utils::endian::{BigEndian, u16be};
+use utils::endian::{u16be, BigEndian};
 use utils::error::*;
 
+use super::fragment;
 use crate::ip::Version::V4;
 use crate::ip::{Checksum, Protocol, ToS};
 
-fn pseudo_csum(header: &Header) -> Checksum {
-	let mut csum = Checksum::with(bytes::cast(&header.src));
-	csum.push_chunk(bytes::cast(&header.dst));
-	csum.push_chunk(&[0, 0, 0, header.proto.0]);
-	csum
-}
-
 #[derive(Clone, Copy)]
 pub struct Interface {
-	addr: Ipv4Addr,
+	pub addr: Ipv4Addr,
 }
 
 impl Interface {
-	pub fn recv(&self, interface: &crate::Interface, buf: Slice) -> Result {
+	pub fn recv(self, interface: &mut crate::Interface, buf: Slice) -> Result {
 		let header: &Header = buf.split();
 
 		if header.dst != self.addr {
 			warn!("Found IP packet with destination {}, expected {}", header.dst, self.addr);
-			return Err(());
-		}
-
-		let frag = header.frg.get();
-
-		if frag.more() || frag.ofst().value() != 0 {
-			log::info!("Recieved fragmented packet, discarding.");
 			return Err(());
 		}
 
@@ -57,14 +44,37 @@ impl Interface {
 			}
 		}
 
-		buf.truncate(header.len.get() as usize - header_len);
+		let payload_len = header.len.get() as usize - header_len;
 
-		interface.handle(header.proto.get(), IpAddr::V4(header.src), || pseudo_csum(header), &buf)?(buf);
+		if buf.len() < payload_len {
+			log::warn!("IP packet smaller than specified length field.");
+			return Err(());
+		}
 
-		Ok(())
+		buf.truncate(payload_len);
+
+		let frag = header.frg.get();
+
+		let start = frag.ofst().value();
+		let more = frag.more();
+
+		let proto = header.proto.get();
+		let src = IpAddr::V4(header.src);
+
+		if start == 0 && !more {
+			// Process the packet regularly if it is not fragmented
+			interface.handle(proto, src, buf)
+		} else {
+			// Construct a fragmentation key and fragment.
+			let key = fragment::Key { ident: frag.idnt() as u32, proto, addr: src };
+			let fragment = fragment::Fragment { start, more, buf };
+
+			// Process them with the fragmentation handler
+			interface.handle_fragment(key, fragment)
+		}
 	}
 
-	pub fn write(&self, buf: Cursor, protocol: Protocol, addr: Ipv4Addr, tos: ToS, f: impl FnOnce(Cursor, Checksum)) {
+	pub fn write(&self, buf: Cursor, protocol: Protocol, addr: Ipv4Addr, tos: ToS, f: impl FnOnce(Cursor)) {
 		let (header, mut buf): (&mut Header, _) = buf.split();
 
 		header.ver = Meta::new(u4::new(5), V4);
@@ -76,7 +86,7 @@ impl Interface {
 		header.src = self.addr;
 		header.dst = addr;
 
-		f(buf.fork(), pseudo_csum(header));
+		f(buf.fork());
 
 		header.len = ((size_of::<Header>() + buf.pivot()) as u16).into();
 		header.frg = Fragment::new(u13::new(0), false, true, 0).into();
@@ -111,7 +121,7 @@ struct Fragment {
 
 #[derive(Cast)]
 #[repr(C)]
-struct Header {
+pub(super) struct Header {
 	ver: Meta,
 	tos: ToS,
 	len: u16be,

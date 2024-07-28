@@ -3,12 +3,12 @@ use core::net::Ipv6Addr;
 use bilge::prelude::*;
 use collections::bytes::Cursor;
 use utils::bytes::Cast;
-use utils::endian::{BigEndian, u16be};
+use utils::endian::{u16be, BigEndian};
 
 use super::Protocol;
 
 pub struct Interface {
-	addr: Ipv6Addr,
+	pub addr: Ipv6Addr,
 }
 
 impl From<Ipv6Addr> for Interface {

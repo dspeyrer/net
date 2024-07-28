@@ -4,13 +4,13 @@ use core::net::IpAddr;
 use collections::bytes::{Cursor, Slice};
 use collections::map::{self, Key, Map};
 use log::{debug, error, info, warn};
-use stakker::{call, Actor, Fwd, CX};
+use stakker::{Actor, Fwd, CX};
 use utils::bytes::{self, Cast};
 use utils::endian::u16be;
 use utils::error::*;
 
 use crate::ip::Protocol::Udp;
-use crate::ip::{self, Checksum, SocketAddr, ToS};
+use crate::ip::{self, SocketAddr, ToS};
 
 const EPHEMERAL: u16 = 49152;
 
@@ -39,30 +39,35 @@ impl Socket {
 
 		let src = self.port;
 
-		call!(
-			[self.interface],
-			write(Udp, addr, tos, move |mut buf: Cursor<'_>, mut csum: Checksum| {
-				{
-					let (header, buf): (&mut Header, _) = buf.fork().split();
+		let actor = self.interface.access_actor().clone();
 
-					header.src = src.into();
-					header.dst = port.into();
-					header.csum = [0, 0];
+		self.interface.defer(move |s| {
+			actor.apply(s, move |this, cx| {
+				let mut csum = this.pseudo_checksum(Udp, addr);
 
-					f(buf);
-				}
+				this.write(cx, Udp, addr, tos, move |mut buf| {
+					{
+						let (header, buf): (&mut Header, _) = buf.fork().split();
 
-				let pivot = buf.pivot();
+						header.src = src.into();
+						header.dst = port.into();
+						header.csum = [0, 0];
 
-				let len: u16 = pivot.try_into().unwrap_or(0);
-				bytes::cast_mut::<Header, _>(&mut *buf).len = len.into();
+						f(buf);
+					}
 
-				csum.push(&len.to_be_bytes());
-				csum.push(&buf[..pivot]);
+					let pivot = buf.pivot();
 
-				bytes::cast_mut::<Header, _>(&mut *buf).csum = csum.end();
+					let len: u16 = pivot.try_into().unwrap_or(0);
+					bytes::cast_mut::<Header, _>(&mut *buf).len = len.into();
+
+					csum.push(&len.to_be_bytes());
+					csum.push(&buf[..pivot]);
+
+					bytes::cast_mut::<Header, _>(&mut *buf).csum = csum.end();
+				});
 			})
-		)
+		});
 	}
 }
 
@@ -170,7 +175,7 @@ impl Interface {
 		}
 	}
 
-	pub fn recv<'a>(&'a self, addr: IpAddr, csum: impl FnOnce() -> Checksum, buf: &Slice) -> Result<impl FnOnce(Slice) + 'a> {
+	pub fn recv<'a>(&'a self, interface: &super::Interface, addr: IpAddr, buf: Slice) -> Result {
 		let len: u32 = buf.len().try_into().map_err(|_| log::warn!("UDP packet too big ({} bytes)", buf.len()))?;
 
 		if buf.len() < size_of::<Header>() {
@@ -178,8 +183,8 @@ impl Interface {
 			return Err(());
 		}
 
-		if addr.is_ipv6() || bytes::cast::<Header, _>(&**buf).csum != [0, 0] {
-			let mut csum = csum();
+		if addr.is_ipv6() || bytes::cast::<Header, _>(&*buf).csum != [0, 0] {
+			let mut csum = interface.pseudo_checksum(Udp, addr);
 
 			csum.push(&len.to_be_bytes());
 			csum.push(&buf);
@@ -205,7 +210,9 @@ impl Interface {
 
 		let port = header.src.get();
 
-		Ok(move |x| e.callback.fwd((SocketAddr { addr, port }, x)))
+		e.callback.fwd((SocketAddr { addr, port }, buf));
+
+		Ok(())
 	}
 }
 
