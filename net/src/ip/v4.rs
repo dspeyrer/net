@@ -5,7 +5,7 @@ use bilge::prelude::*;
 use collections::bytes::{Cursor, Slice};
 use log::warn;
 use utils::bytes::{self, Cast};
-use utils::endian::{b, u16be};
+use utils::endian::{BigEndian, u16be};
 use utils::error::*;
 
 use crate::ip::Version::V4;
@@ -21,13 +21,6 @@ fn pseudo_csum(header: &Header) -> Checksum {
 #[derive(Clone, Copy)]
 pub struct Interface {
 	addr: Ipv4Addr,
-}
-
-impl super::Interface {
-	pub fn test() {
-		let meta: u8 = Meta::new(u4::new(5), V4).into();
-		println!("{:08b}", meta.value());
-	}
 }
 
 impl Interface {
@@ -122,9 +115,9 @@ struct Header {
 	ver: Meta,
 	tos: ToS,
 	len: u16be,
-	frg: b<Fragment>,
+	frg: BigEndian<Fragment>,
 	ttl: u8,
-	proto: b<Protocol>,
+	proto: BigEndian<Protocol>,
 	csm: [u8; 2],
 	src: Ipv4Addr,
 	dst: Ipv4Addr,

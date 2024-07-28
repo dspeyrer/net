@@ -178,7 +178,7 @@ impl Interface {
 			return Err(());
 		}
 
-		if (addr.is_ipv4() && bytes::cast::<Header, _>(&**buf).csum != [0, 0]) || addr.is_ipv6() {
+		if addr.is_ipv6() || bytes::cast::<Header, _>(&**buf).csum != [0, 0] {
 			let mut csum = csum();
 
 			csum.push(&len.to_be_bytes());

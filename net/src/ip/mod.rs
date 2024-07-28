@@ -19,7 +19,7 @@ pub mod v6;
 pub use checksum::Checksum;
 
 impl Interface {
-	pub fn recv(&self, _: CX![], buf: Slice) {
+	pub fn recv(&mut self, _: CX![], buf: Slice) {
 		#[cfg(feature = "pcap")]
 		let _ = self.pcap.log(&buf);
 

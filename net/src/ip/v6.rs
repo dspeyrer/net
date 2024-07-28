@@ -3,7 +3,7 @@ use core::net::Ipv6Addr;
 use bilge::prelude::*;
 use collections::bytes::Cursor;
 use utils::bytes::Cast;
-use utils::endian::{b, u16be};
+use utils::endian::{BigEndian, u16be};
 
 use super::Protocol;
 
@@ -28,9 +28,9 @@ struct Meta {
 #[derive(Cast)]
 #[repr(C)]
 struct Header {
-	ver: b<Meta>,
+	ver: BigEndian<Meta>,
 	len: u16be,
-	nxt: b<Protocol>,
+	nxt: BigEndian<Protocol>,
 	ttl: u8,
 	src: Ipv6Addr,
 	dst: Ipv6Addr,

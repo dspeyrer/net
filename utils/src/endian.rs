@@ -28,10 +28,10 @@ macro_rules! define_types {
 
 			#[doc = concat!("A ", stringify!($int), " represented in bytes in little-endian byteorder.")]
 			#[allow(non_camel_case_types)]
-			pub type $le = l<$int>;
+			pub type $le = LittleEndian<$int>;
 			#[doc = concat!("A ", stringify!($int), " represented in bytes in big-endian byteorder.")]
 			#[allow(non_camel_case_types)]
-			pub type $be = b<$int>;
+			pub type $be = BigEndian<$int>;
 		)*
 	};
 	( $( $name:ident($endian:literal) $( $action:ident )? );* ) => {
@@ -109,6 +109,6 @@ macro_rules! define_types {
 define_types!( u16(u16le u16be) u32(u32le u32be) u64(u64le u64be) u128(u128le u128be) );
 
 #[cfg(target_endian = "little")]
-define_types!( l("little"); b("big") swap );
+define_types!( LittleEndian("little"); BigEndian("big") swap );
 #[cfg(target_endian = "big")]
-define_types!( l("little") swap; b("big") );
+define_types!( LittleEndian("little") swap; BigEndian("big") );

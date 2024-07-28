@@ -8,7 +8,7 @@ use log::{info, warn};
 use rand::Rng;
 use stakker::{Actor, FixedTimerKey, Fwd, Ret, CX};
 use utils::bytes::Cast;
-use utils::endian::{b, u16be, u32be};
+use utils::endian::{BigEndian, u16be, u32be};
 
 use crate::ip::SocketAddr;
 use crate::udp;
@@ -109,10 +109,10 @@ impl Interface {
 			assert!(buf.pivot() <= 255);
 
 			// QTYPE
-			buf = buf.push(&b::from(TY_A));
+			buf = buf.push(&BigEndian::from(TY_A));
 
 			// QCLASS
-			buf.push(&b::from(CLASS_IN));
+			buf.push(&BigEndian::from(CLASS_IN));
 		});
 
 		let actor = cx.access_actor().clone();
@@ -280,7 +280,7 @@ struct Header {
 	/// A 16 bit identifier assigned by the program that generates any kind of query.  This identifier is copied the corresponding reply and can be used by the requester  to match up replies to outstanding queries.
 	id: u16,
 	/// The bitfields of the next two bytes
-	flags: b<Flags>,
+	flags: BigEndian<Flags>,
 	/// an unsigned 16 bit integer specifying the number of entries in the question section.
 	qdcount: u16be,
 	/// an unsigned 16 bit integer specifying the number of resource records in the answer section.
