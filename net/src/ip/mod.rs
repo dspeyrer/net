@@ -9,8 +9,6 @@ use stakker::{call, CX};
 use utils::bytes::{self, Cast};
 use utils::error::*;
 
-use crate::Interface;
-
 mod checksum;
 
 pub mod v4;
@@ -20,12 +18,13 @@ pub mod fragment;
 
 pub use checksum::Checksum;
 
-pub struct IP {
+#[derive(Clone, Copy)]
+pub struct Interface {
 	v4: Ipv4Addr,
 	v6: Ipv6Addr,
 }
 
-impl IP {
+impl Interface {
 	pub fn new(v4: Ipv4Addr, v6: Ipv6Addr) -> Self {
 		Self { v4, v6 }
 	}
@@ -49,7 +48,7 @@ impl IP {
 	}
 }
 
-impl Interface {
+impl crate::Interface {
 	pub fn recv(&mut self, _: CX![], buf: Slice) {
 		#[cfg(feature = "pcap")]
 		let _ = self.pcap.log(&buf);
@@ -57,14 +56,14 @@ impl Interface {
 		let ver = bytes::cast::<Prefix, _>(&*buf).ver();
 
 		let _ = match ver {
-			Version::V4 => self.v4.recv(self, buf),
+			Version::V4 => self.ip.recv_v4(self, buf),
 			Version::V6 => return log::warn!("IPv6 not implemented yet"),
 			Version::Unknown => return warn!("Invalid IP packet version"),
 		};
 	}
 
 	pub(crate) fn write(&mut self, _: CX![], protocol: Protocol, addr: IpAddr, tos: ToS, f: impl FnOnce(Cursor) + 'static) {
-		let v4 = self.v4;
+		let ip = self.ip;
 		#[cfg(feature = "pcap")]
 		let pcap = self.pcap.clone();
 
@@ -72,7 +71,7 @@ impl Interface {
 			[self.link],
 			write(move |mut buf: Cursor<'_>| match addr {
 				IpAddr::V4(addr) => {
-					v4.write(buf.fork(), protocol, addr, tos, f);
+					ip.write_v4(buf.fork(), protocol, addr, tos, f);
 					#[cfg(feature = "pcap")]
 					let _ = pcap.log(&buf[..buf.pivot()]);
 				}

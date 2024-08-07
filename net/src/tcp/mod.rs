@@ -8,7 +8,7 @@ use utils::bytes::Cast;
 use utils::endian::{u16be, u32be, u64be, BigEndian};
 use utils::error::*;
 
-use crate::ip::{SocketAddr, IP};
+use crate::ip::{self, SocketAddr};
 
 #[bitsize(16)]
 struct Control {
@@ -169,7 +169,7 @@ pub(crate) struct Interface {
 }
 
 impl Interface {
-	pub fn recv<'a>(&'a mut self, interface: &IP, addr: IpAddr, buf: Slice) -> Result {
+	pub fn recv<'a>(&'a mut self, interface: &ip::Interface, addr: IpAddr, buf: Slice) -> Result {
 		Err(())
 	}
 }

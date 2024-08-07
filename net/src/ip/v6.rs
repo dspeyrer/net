@@ -7,16 +7,6 @@ use utils::endian::{u16be, BigEndian};
 
 use super::Protocol;
 
-pub struct Interface {
-	pub addr: Ipv6Addr,
-}
-
-impl From<Ipv6Addr> for Interface {
-	fn from(addr: Ipv6Addr) -> Self {
-		Self { addr }
-	}
-}
-
 #[bitsize(32)]
 #[derive(FromBits)]
 struct Meta {

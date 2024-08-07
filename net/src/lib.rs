@@ -2,14 +2,13 @@
 
 use core::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-use ip::{v4, v6};
 use stakker::{ActorOwn, CX};
 use wireguard::Wireguard;
 
 extern crate alloc;
 
 pub mod dns;
-pub mod ip;
+mod ip;
 #[cfg(feature = "pcap")]
 pub mod pcap;
 pub mod tcp;
@@ -21,10 +20,7 @@ pub struct Interface {
 	#[cfg(feature = "pcap")]
 	pcap: pcap::Writer,
 
-	ip: ip::IP,
-
-	v4: v4::Interface,
-	v6: v6::Interface,
+	ip: ip::Interface,
 
 	fragment: ip::fragment::Store,
 
@@ -47,10 +43,8 @@ impl Interface {
 			#[cfg(feature = "pcap")]
 			pcap: pcap::Writer::new("./log.pcap").unwrap(),
 
-			ip: ip::IP::new(v4, v6),
+			ip: ip::Interface::new(v4, v6),
 
-			v4: v4.into(),
-			v6: v6.into(),
 			fragment: ip::fragment::Store::default(),
 
 			dns,

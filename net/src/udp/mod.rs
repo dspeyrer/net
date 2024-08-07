@@ -10,7 +10,7 @@ use utils::endian::u16be;
 use utils::error::*;
 
 use crate::ip::Protocol::Udp;
-use crate::ip::{self, SocketAddr, ToS, IP};
+use crate::ip::{self, SocketAddr, ToS};
 
 const EPHEMERAL: u16 = 49152;
 
@@ -175,7 +175,7 @@ impl Interface {
 		}
 	}
 
-	pub fn recv<'a>(&'a self, interface: &IP, addr: IpAddr, buf: Slice) -> Result {
+	pub fn recv<'a>(&'a self, interface: &ip::Interface, addr: IpAddr, buf: Slice) -> Result {
 		let len: u32 = buf.len().try_into().map_err(|_| log::warn!("UDP packet too big ({} bytes)", buf.len()))?;
 
 		if buf.len() < size_of::<Header>() {

@@ -8,21 +8,16 @@ use utils::bytes::{self, Cast};
 use utils::endian::{u16be, BigEndian};
 use utils::error::*;
 
-use super::fragment;
+use super::{fragment, Interface};
 use crate::ip::Version::V4;
 use crate::ip::{Checksum, Protocol, ToS};
 
-#[derive(Clone, Copy)]
-pub struct Interface {
-	pub addr: Ipv4Addr,
-}
-
 impl Interface {
-	pub fn recv(self, interface: &mut crate::Interface, buf: Slice) -> Result {
+	pub fn recv_v4(self, interface: &mut crate::Interface, buf: Slice) -> Result {
 		let header: &Header = buf.split();
 
-		if header.dst != self.addr {
-			warn!("Found IP packet with destination {}, expected {}", header.dst, self.addr);
+		if header.dst != self.v4 {
+			warn!("Found IP packet with destination {}, expected {}", header.dst, self.v4);
 			return Err(());
 		}
 
@@ -74,7 +69,7 @@ impl Interface {
 		}
 	}
 
-	pub fn write(&self, buf: Cursor, protocol: Protocol, addr: Ipv4Addr, tos: ToS, f: impl FnOnce(Cursor)) {
+	pub fn write_v4(&self, buf: Cursor, protocol: Protocol, addr: Ipv4Addr, tos: ToS, f: impl FnOnce(Cursor)) {
 		let (header, mut buf): (&mut Header, _) = buf.split();
 
 		header.ver = Meta::new(u4::new(5), V4);
@@ -83,7 +78,7 @@ impl Interface {
 		header.ttl = 64;
 		header.proto = protocol.into();
 
-		header.src = self.addr;
+		header.src = self.v4;
 		header.dst = addr;
 
 		f(buf.fork());
@@ -92,12 +87,6 @@ impl Interface {
 		header.frg = Fragment::new(u13::new(0), false, true, 0).into();
 
 		header.csm = Checksum::of(bytes::as_slice(header)).end();
-	}
-}
-
-impl From<Ipv4Addr> for Interface {
-	fn from(addr: Ipv4Addr) -> Self {
-		Self { addr }
 	}
 }
 

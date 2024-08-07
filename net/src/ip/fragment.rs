@@ -124,7 +124,7 @@ pub struct Store {
 	map: HashMap<Key, State>,
 }
 
-impl super::Interface {
+impl crate::Interface {
 	/// Consume a packet fragment, passing completed packets to upper-layer protocols.
 	pub(super) fn handle_fragment(&mut self, key: Key, fragment: Fragment) -> Result {
 		match self.fragment.map.entry(key) {
