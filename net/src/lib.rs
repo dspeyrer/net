@@ -21,8 +21,11 @@ pub struct Interface {
 	#[cfg(feature = "pcap")]
 	pcap: pcap::Writer,
 
+	ip: ip::IP,
+
 	v4: v4::Interface,
 	v6: v6::Interface,
+
 	fragment: ip::fragment::Store,
 
 	dns: dns::Interface,
@@ -43,6 +46,8 @@ impl Interface {
 
 			#[cfg(feature = "pcap")]
 			pcap: pcap::Writer::new("./log.pcap").unwrap(),
+
+			ip: ip::IP::new(v4, v6),
 
 			v4: v4.into(),
 			v6: v6.into(),

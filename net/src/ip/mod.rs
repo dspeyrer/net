@@ -1,5 +1,5 @@
 use core::fmt::{Debug, Display};
-use core::net::IpAddr;
+use core::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::net::SocketAddrV4;
 
 use bilge::prelude::*;
@@ -19,6 +19,35 @@ pub mod v6;
 pub mod fragment;
 
 pub use checksum::Checksum;
+
+pub struct IP {
+	v4: Ipv4Addr,
+	v6: Ipv6Addr,
+}
+
+impl IP {
+	pub fn new(v4: Ipv4Addr, v6: Ipv6Addr) -> Self {
+		Self { v4, v6 }
+	}
+
+	#[inline]
+	pub(crate) fn pseudo_checksum(&self, proto: Protocol, addr: IpAddr) -> Checksum {
+		match addr {
+			IpAddr::V4(addr) => {
+				let mut csum = Checksum::with(bytes::cast(&addr));
+				csum.push_chunk(bytes::cast(&self.v4));
+				csum.push_chunk(&[0, 0, 0, proto.into()]);
+				csum
+			}
+			IpAddr::V6(addr) => {
+				let mut csum = Checksum::with(bytes::cast(&addr));
+				csum.push_chunk(bytes::cast(&self.v6));
+				csum.push_chunk(&[0, 0, 0, proto.into()]);
+				csum
+			}
+		}
+	}
+}
 
 impl Interface {
 	pub fn recv(&mut self, _: CX![], buf: Slice) {
@@ -52,32 +81,11 @@ impl Interface {
 		)
 	}
 
-	pub fn handle<'a>(&'a self, proto: Protocol, addr: IpAddr, buf: Slice) -> Result {
+	pub fn handle<'a>(&'a mut self, proto: Protocol, addr: IpAddr, buf: Slice) -> Result {
 		match proto {
-			Protocol::Udp => self.udp.recv(self, addr, buf),
-			Protocol::Tcp => {
-				log::debug!("TCP not implemented");
-				Err(())
-			}
+			Protocol::Udp => self.udp.recv(&self.ip, addr, buf),
+			Protocol::Tcp => self.tcp.recv(&self.ip, addr, buf),
 			Protocol::Unknown => Err(log::debug!("Unimplemented IP protocol")),
-		}
-	}
-
-	#[inline]
-	pub(crate) fn pseudo_checksum(&self, proto: Protocol, addr: IpAddr) -> Checksum {
-		match addr {
-			IpAddr::V4(addr) => {
-				let mut csum = Checksum::with(bytes::cast(&addr));
-				csum.push_chunk(bytes::cast(&self.v4.addr));
-				csum.push_chunk(&[0, 0, 0, proto.into()]);
-				csum
-			}
-			IpAddr::V6(addr) => {
-				let mut csum = Checksum::with(bytes::cast(&addr));
-				csum.push_chunk(bytes::cast(&self.v6.addr));
-				csum.push_chunk(&[0, 0, 0, proto.into()]);
-				csum
-			}
 		}
 	}
 }
