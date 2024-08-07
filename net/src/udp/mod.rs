@@ -34,6 +34,10 @@ impl Socket {
 		this.udp.bind(cx, port, callback)
 	}
 
+	pub fn bind_eph(this: &mut super::Interface, cx: CX![super::Interface], callback: Fwd<(SocketAddr, Slice)>) -> Self {
+		this.udp.bind_eph(cx, callback)
+	}
+
 	pub fn write(&self, SocketAddr { addr, port }: SocketAddr, f: impl FnOnce(Cursor) + 'static) {
 		let tos = ToS::new(ip::ECN::NotECT, ip::DiffServ::Default);
 

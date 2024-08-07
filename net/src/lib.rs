@@ -14,6 +14,8 @@ pub mod pcap;
 pub mod tcp;
 pub mod udp;
 
+pub use ip::SocketAddr;
+
 pub struct Interface {
 	link: ActorOwn<Wireguard>,
 
@@ -24,8 +26,6 @@ pub struct Interface {
 
 	fragment: ip::fragment::Store,
 
-	dns: dns::Interface,
-
 	udp: udp::Interface,
 	tcp: tcp::Interface,
 }
@@ -34,8 +34,6 @@ impl Interface {
 	pub fn init(cx: CX![], link: ActorOwn<Wireguard>, v4: Ipv4Addr, v6: Ipv6Addr, dns: IpAddr) -> Option<Self> {
 		let mut udp = udp::Interface::default();
 		let tcp = tcp::Interface::default();
-
-		let dns = dns::Interface::new(cx, &mut udp, dns);
 
 		Some(Self {
 			link,
@@ -46,8 +44,6 @@ impl Interface {
 			ip: ip::Interface::new(v4, v6),
 
 			fragment: ip::fragment::Store::default(),
-
-			dns,
 
 			udp,
 			tcp,
