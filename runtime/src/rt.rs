@@ -53,7 +53,11 @@ pub fn exec(stakker: &mut Stakker, exit_fn: impl FnOnce()) -> Result {
 			log::trace!("idle_pending: {}, timeout: {:?}", idle_pending, timeout);
 
 			// Poll the file descriptors.
-			let is_io = this.borrow_mut().poll(timeout)?;
+			let Ok(is_io) = this.borrow_mut().poll(timeout) else {
+				// If polling fails, run the exit processor on the next iteration of the loop.
+				EXIT.store(true, Ordering::Relaxed);
+				continue;
+			};
 
 			t = Instant::now();
 			// If there is still no I/O ready after a non-blocking poll, run the idle queue.
