@@ -80,7 +80,7 @@ impl crate::Interface {
 		)
 	}
 
-	pub fn handle<'a>(&'a mut self, proto: Protocol, addr: IpAddr, buf: Slice) -> Result {
+	pub(crate) fn handle<'a>(&'a mut self, proto: Protocol, addr: IpAddr, buf: Slice) -> Result {
 		match proto {
 			Protocol::Udp => self.udp.recv(&self.ip, addr, buf),
 			Protocol::Tcp => self.tcp.recv(&self.ip, addr, buf),

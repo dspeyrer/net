@@ -31,11 +31,42 @@ pub struct Socket {
 
 impl Socket {
 	pub fn bind(this: &mut super::Interface, cx: CX![super::Interface], port: u16, callback: Fwd<(SocketAddr, Slice)>) -> Result<Self> {
-		this.udp.bind(cx, port, callback)
+		let udp = &mut this.udp;
+
+		let entry = match udp.map.find_entry(&port) {
+			map::Entry::Empty(entry) => entry,
+			_ => {
+				error!("Address already in use");
+				return Err(());
+			}
+		};
+
+		entry.insert(Entry { port, callback });
+
+		Ok(Socket { port, interface: cx.access_actor().clone() })
 	}
 
 	pub fn bind_eph(this: &mut super::Interface, cx: CX![super::Interface], callback: Fwd<(SocketAddr, Slice)>) -> Self {
-		this.udp.bind_eph(cx, callback)
+		let udp = &mut this.udp;
+
+		// Note: if all ports in the ephemeral range are full, this will loop forever.
+		let entry = loop {
+			// Increment, wrapping to the ephemeral port starting index
+			udp.nxt = udp.nxt.checked_add(1).unwrap_or(EPHEMERAL);
+
+			match udp.map.find_entry(&udp.nxt) {
+				map::Entry::Empty(entry) => break entry,
+				// If the port is already taken, continue
+				_ => {}
+			}
+		};
+
+		entry.insert(Entry { port: udp.nxt, callback });
+
+		Socket {
+			port: udp.nxt,
+			interface: cx.access_actor().clone(),
+		}
 	}
 
 	pub fn write(&self, SocketAddr { addr, port }: SocketAddr, f: impl FnOnce(Cursor) + 'static) {
@@ -92,7 +123,38 @@ pub struct Connected {
 
 impl Connected {
 	pub fn bind(this: &mut super::Interface, cx: CX![super::Interface], addr: SocketAddr, callback: impl Fn(Slice) + 'static) -> Self {
-		this.udp.connect(cx, addr, callback)
+		let udp = &mut this.udp;
+
+		let callback = Fwd::new(move |(src, buf)| {
+			if src == addr {
+				// The packet source matches the bound address
+				callback(buf);
+			} else {
+				info!("Recieved unexpected packet from {}", src);
+			}
+		});
+
+		// Note: if all ports in the ephemeral range are full, this will loop forever.
+		let entry = loop {
+			// Increment, wrapping to the ephemeral port starting index
+			udp.nxt = udp.nxt.checked_add(1).unwrap_or(EPHEMERAL);
+
+			match udp.map.find_entry(&udp.nxt) {
+				map::Entry::Empty(entry) => break entry,
+				// If the port is already taken, continue
+				_ => {}
+			}
+		};
+
+		entry.insert(Entry { port: udp.nxt, callback });
+
+		Connected {
+			inner: Socket {
+				port: udp.nxt,
+				interface: cx.access_actor().clone(),
+			},
+			addr,
+		}
 	}
 
 	pub fn addr(&self) -> &SocketAddr {
@@ -111,74 +173,6 @@ pub(crate) struct Interface {
 }
 
 impl Interface {
-	pub fn bind_eph(&mut self, cx: CX![super::Interface], callback: Fwd<(SocketAddr, Slice)>) -> Socket {
-		// Note: if all ports in the ephemeral range are full, this will loop forever.
-		let entry = loop {
-			// Increment, wrapping to the ephemeral port starting index
-			self.nxt = self.nxt.checked_add(1).unwrap_or(EPHEMERAL);
-
-			match self.map.find_entry(&self.nxt) {
-				map::Entry::Empty(entry) => break entry,
-				// If the port is already taken, continue
-				_ => {}
-			}
-		};
-
-		entry.insert(Entry { port: self.nxt, callback });
-
-		Socket {
-			port: self.nxt,
-			interface: cx.access_actor().clone(),
-		}
-	}
-
-	pub fn bind(&mut self, cx: CX![super::Interface], port: u16, callback: Fwd<(SocketAddr, Slice)>) -> Result<Socket> {
-		let entry = match self.map.find_entry(&port) {
-			map::Entry::Empty(entry) => entry,
-			_ => {
-				error!("Address already in use");
-				return Err(());
-			}
-		};
-
-		entry.insert(Entry { port, callback });
-
-		Ok(Socket { port, interface: cx.access_actor().clone() })
-	}
-
-	pub fn connect(&mut self, cx: CX![super::Interface], addr: SocketAddr, callback: impl Fn(Slice) + 'static) -> Connected {
-		let callback = Fwd::new(move |(src, buf)| {
-			if src == addr {
-				// The packet source matches the bound address
-				callback(buf);
-			} else {
-				info!("Recieved unexpected packet from {}", src);
-			}
-		});
-
-		// Note: if all ports in the ephemeral range are full, this will loop forever.
-		let entry = loop {
-			// Increment, wrapping to the ephemeral port starting index
-			self.nxt = self.nxt.checked_add(1).unwrap_or(EPHEMERAL);
-
-			match self.map.find_entry(&self.nxt) {
-				map::Entry::Empty(entry) => break entry,
-				// If the port is already taken, continue
-				_ => {}
-			}
-		};
-
-		entry.insert(Entry { port: self.nxt, callback });
-
-		Connected {
-			inner: Socket {
-				port: self.nxt,
-				interface: cx.access_actor().clone(),
-			},
-			addr,
-		}
-	}
-
 	pub fn recv<'a>(&'a self, interface: &ip::Interface, addr: IpAddr, buf: Slice) -> Result {
 		let len: u32 = buf.len().try_into().map_err(|_| log::warn!("UDP packet too big ({} bytes)", buf.len()))?;
 
