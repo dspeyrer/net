@@ -31,10 +31,7 @@ pub struct Interface {
 }
 
 impl Interface {
-	pub fn init(cx: CX![], link: ActorOwn<Wireguard>, v4: Ipv4Addr, v6: Ipv6Addr, dns: IpAddr) -> Option<Self> {
-		let mut udp = udp::Interface::default();
-		let tcp = tcp::Interface::default();
-
+	pub fn init(_: CX![], link: ActorOwn<Wireguard>, v4: Ipv4Addr, v6: Ipv6Addr) -> Option<Self> {
 		Some(Self {
 			link,
 
@@ -45,8 +42,8 @@ impl Interface {
 
 			fragment: ip::fragment::Store::default(),
 
-			udp,
-			tcp,
+			udp: udp::Interface::default(),
+			tcp: tcp::Interface::default(),
 		})
 	}
 }
