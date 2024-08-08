@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+utils = { path = "../utils" }
+collections = { path = "../collections" }
+
 stakker = { version = "0.2.11", default-features = false }
 log = "0.4.21"
 ctrlc = "3.4.4"
-
-utils = { path = "../utils" }
-collections = { path = "../collections" }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.52.0", features = ["Win32_Networking_WinSock"] }

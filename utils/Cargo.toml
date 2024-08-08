@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+macros = { path = "../macros" }
+
 bilge = "0.2.0"
 generic-array = "0.14.7"
 x25519-dalek = "2.0.1"
-
-macros = { path = "../macros" }

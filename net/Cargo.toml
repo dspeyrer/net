@@ -4,15 +4,15 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-log = "0.4.21"
-bilge = "0.2.0"
-stakker = { version = "0.2.11", default-features = false }
-rand = "0.8.5"
-
 utils = { path = "../utils" }
 runtime = { path = "../runtime" }
 wireguard = { path = "../wireguard" }
 collections = { path = "../collections" }
+
+log = "0.4.21"
+bilge = "0.2.0"
+stakker = { version = "0.2.11", default-features = false }
+rand = "0.8.5"
 
 [features]
 pcap = []

@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+collections = { path = "../collections" }
+utils = { path = "../utils" }
+runtime = { path = "../runtime" }
+
 tai64 = "4.0.0"
 x25519-dalek = { version = "2.0.1", features = ["static_secrets", "getrandom"] }
 blake2 = "0.10.6"
@@ -14,7 +18,3 @@ base64 = "0.22.1"
 log = "0.4.21"
 generic-array = "0.14.7"
 stakker = { version = "0.2.11", default-features = false }
-
-collections = { path = "../collections" }
-utils = { path = "../utils" }
-runtime = { path = "../runtime" }
