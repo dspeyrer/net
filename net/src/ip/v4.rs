@@ -12,6 +12,38 @@ use super::{fragment, Interface};
 use crate::ip::Version::V4;
 use crate::ip::{Checksum, Protocol, ToS};
 
+#[bitsize(8)]
+#[derive(FromBits, Cast)]
+#[repr(C)]
+struct Meta {
+	ihl: u4,
+	ver: super::Version,
+}
+
+#[bitsize(32)]
+#[derive(FromBits)]
+struct Fragment {
+	ofst: u13,
+	more: bool,
+	dont: bool,
+	reserved: bool,
+	idnt: u16,
+}
+
+#[derive(Cast)]
+#[repr(C)]
+pub(super) struct Header {
+	ver: Meta,
+	tos: ToS,
+	len: u16be,
+	frg: BigEndian<Fragment>,
+	ttl: u8,
+	proto: BigEndian<Protocol>,
+	csm: [u8; 2],
+	src: Ipv4Addr,
+	dst: Ipv4Addr,
+}
+
 impl Interface {
 	pub fn recv_v4(self, interface: &mut crate::Interface, buf: Slice) -> Result {
 		let header: &Header = buf.split();
@@ -88,36 +120,4 @@ impl Interface {
 
 		header.csm = Checksum::of(bytes::as_slice(header)).end();
 	}
-}
-
-#[bitsize(8)]
-#[derive(FromBits, Cast)]
-#[repr(C)]
-struct Meta {
-	ihl: u4,
-	ver: super::Version,
-}
-
-#[bitsize(32)]
-#[derive(FromBits)]
-struct Fragment {
-	ofst: u13,
-	more: bool,
-	dont: bool,
-	reserved: bool,
-	idnt: u16,
-}
-
-#[derive(Cast)]
-#[repr(C)]
-pub(super) struct Header {
-	ver: Meta,
-	tos: ToS,
-	len: u16be,
-	frg: BigEndian<Fragment>,
-	ttl: u8,
-	proto: BigEndian<Protocol>,
-	csm: [u8; 2],
-	src: Ipv4Addr,
-	dst: Ipv4Addr,
 }

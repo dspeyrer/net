@@ -1,11 +1,16 @@
-use core::net::Ipv6Addr;
+use core::mem::size_of;
+use core::net::{IpAddr, Ipv6Addr};
 
 use bilge::prelude::*;
-use collections::bytes::Cursor;
+use collections::bytes::{Cursor, Slice};
+use log::warn;
 use utils::bytes::Cast;
 use utils::endian::{u16be, BigEndian};
+use utils::error::*;
 
-use super::Protocol;
+use super::{Interface, Protocol};
+use crate::ip::ToS;
+use crate::ip::Version::V6;
 
 #[bitsize(32)]
 #[derive(FromBits)]
@@ -26,14 +31,43 @@ struct Header {
 	dst: Ipv6Addr,
 }
 
-struct Packet<'a> {
-	header: &'a mut Header,
-	buf: Cursor<'a>,
-}
+impl Interface {
+	pub fn recv_v6(self, interface: &mut crate::Interface, buf: Slice) -> Result {
+		let header: &Header = buf.split();
 
-impl<'a> From<Cursor<'a>> for Packet<'a> {
-	fn from(buf: Cursor<'a>) -> Self {
-		let (header, buf) = buf.split();
-		Self { header, buf }
+		if header.dst != self.v6 {
+			warn!("Found IP packet with destination {}, expected {}", header.dst, self.v6);
+			return Err(());
+		}
+
+		let payload_len = header.len.get() as usize - size_of::<Header>();
+
+		if buf.len() < payload_len {
+			log::warn!("IP packet smaller than specified length field.");
+			return Err(());
+		}
+
+		buf.truncate(payload_len);
+
+		let proto = header.nxt.get();
+		let src = IpAddr::V6(header.src);
+
+		interface.handle(proto, src, buf)
+	}
+
+	pub fn write_v6(&self, buf: Cursor, protocol: Protocol, addr: Ipv6Addr, tos: ToS, f: impl FnOnce(Cursor)) {
+		let (header, mut buf): (&mut Header, _) = buf.split();
+
+		header.ver = Meta::new(u20::MIN, tos, V6).into();
+
+		header.nxt = protocol.into();
+		header.ttl = 64;
+
+		header.src = self.v6;
+		header.dst = addr;
+
+		f(buf.fork());
+
+		header.len = ((size_of::<Header>() + buf.pivot()) as u16).into();
 	}
 }

@@ -57,7 +57,7 @@ impl crate::Interface {
 
 		let _ = match ver {
 			Version::V4 => self.ip.recv_v4(self, buf),
-			Version::V6 => return log::warn!("IPv6 not implemented yet"),
+			Version::V6 => self.ip.recv_v6(self, buf),
 			Version::Unknown => return warn!("Invalid IP packet version"),
 		};
 	}
@@ -69,13 +69,14 @@ impl crate::Interface {
 
 		call!(
 			[self.link],
-			write(move |mut buf: Cursor<'_>| match addr {
-				IpAddr::V4(addr) => {
-					ip.write_v4(buf.fork(), protocol, addr, tos, f);
-					#[cfg(feature = "pcap")]
-					let _ = pcap.log(&buf[..buf.pivot()]);
+			write(move |mut buf: Cursor<'_>| {
+				match addr {
+					IpAddr::V4(addr) => ip.write_v4(buf.fork(), protocol, addr, tos, f),
+					IpAddr::V6(addr) => ip.write_v6(buf.fork(), protocol, addr, tos, f),
 				}
-				IpAddr::V6(_) => todo!(),
+
+				#[cfg(feature = "pcap")]
+				let _ = pcap.log(&buf[..buf.pivot()]);
 			})
 		)
 	}

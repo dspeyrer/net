@@ -1,6 +1,6 @@
 #![feature(slice_as_chunks, write_all_vectored, trivial_bounds)]
 
-use core::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use core::net::{Ipv4Addr, Ipv6Addr};
 
 use stakker::{ActorOwn, CX};
 use wireguard::Wireguard;
