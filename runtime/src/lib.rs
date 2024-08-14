@@ -93,7 +93,10 @@ thread_local! {
 	static GLOBAL: RefCell<State> = const {
 		RefCell::new(State {
 			fds: Vec::new(),
-			entries: Vec::new()
+			entries: Vec::new(),
+
+			npoll: 0,
+			nread: 0
 		})
 	};
 }
@@ -101,6 +104,9 @@ thread_local! {
 struct State {
 	fds: Vec<Poll>,
 	entries: Vec<Entry>,
+
+	npoll: u64,
+	nread: u64,
 }
 
 impl State {
@@ -127,6 +133,8 @@ impl State {
 				as_timeout(timeout),
 			)
 		};
+
+		self.npoll += 1;
 
 		let mut pending: u32 = ret.try_into().map_err(|_| error!("poll() failed: {}", io::Error::last_os_error()))?;
 
@@ -155,7 +163,7 @@ impl State {
 			}
 
 			if *revents & POLLIN != 0 {
-				entry.flush_read(*fd)?;
+				entry.flush_read(*fd, &mut self.nread)?;
 			}
 
 			if *revents & POLLOUT != 0 {
@@ -179,6 +187,11 @@ impl State {
 
 		Ok(true)
 	}
+
+	pub fn log_stats(&self) {
+		let avg_read = self.nread as f64 / self.npoll as f64;
+		log::info!("Average socket reads per I/O poll: {:.2}", avg_read);
+	}
 }
 
 struct Entry {
@@ -187,11 +200,13 @@ struct Entry {
 }
 
 impl Entry {
-	fn flush_read(&mut self, fd: RawFd) -> Result {
+	fn flush_read(&mut self, fd: RawFd, ctr: &mut u64) -> Result {
 		let mut buf = Slice::new(1500);
 
 		while recv(fd, &mut buf)? {
 			self.fwd.fwd(buf);
+			*ctr += 1;
+
 			buf = Slice::new(1500);
 		}
 

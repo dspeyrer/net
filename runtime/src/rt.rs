@@ -33,6 +33,8 @@ pub fn exec(stakker: &mut Stakker, exit_fn: impl FnOnce()) -> Result {
 				exit_fn();
 				// Execute the deferral queue to cleanup the application state.
 				stakker.run(t, false);
+				// Log collected poll statistics.
+				this.borrow().log_stats();
 				// Exit.
 				break;
 			};
