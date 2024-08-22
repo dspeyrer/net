@@ -4,6 +4,7 @@ use alloc::collections::VecDeque;
 use core::cell::RefCell;
 use core::time::Duration;
 use std::io::{self, ErrorKind};
+use std::time::Instant;
 
 use collections::bytes::{Cursor, Slice};
 use log::error;
@@ -95,8 +96,12 @@ thread_local! {
 			fds: Vec::new(),
 			entries: Vec::new(),
 
-			npoll: 0,
-			nread: 0
+			prev: None,
+			poll: 0,
+			read: 0,
+			wait: Duration::ZERO,
+			tick: Duration::ZERO,
+			tout: Duration::ZERO
 		})
 	};
 }
@@ -105,8 +110,18 @@ struct State {
 	fds: Vec<Poll>,
 	entries: Vec<Entry>,
 
-	npoll: u64,
-	nread: u64,
+	/// The last poll call end timestamp
+	prev: Option<Instant>,
+	/// Total number of poll calls
+	poll: u64,
+	/// Total number of socket reads
+	read: u64,
+	/// Total poll wait time
+	wait: Duration,
+	/// Total Stakker run time
+	tick: Duration,
+	/// Total requested timeout duration
+	tout: Duration,
 }
 
 impl State {
@@ -126,6 +141,8 @@ impl State {
 
 	/// Poll the fds. Returns whether any file descriptors are ready for I/O.
 	fn poll(&mut self, timeout: Option<Duration>) -> Result<bool> {
+		let t = Instant::now();
+
 		let ret = unsafe {
 			poll(
 				self.fds.as_mut_ptr(),
@@ -134,7 +151,19 @@ impl State {
 			)
 		};
 
-		self.npoll += 1;
+		let e = Instant::now();
+
+		self.wait += e - t;
+
+		if let Some(prev) = self.prev.replace(e) {
+			self.tick += t - prev;
+		}
+
+		if let Some(timeout) = timeout {
+			self.tout += timeout;
+		}
+
+		self.poll += 1;
 
 		let mut pending: u32 = ret.try_into().map_err(|_| error!("poll() failed: {}", io::Error::last_os_error()))?;
 
@@ -163,7 +192,7 @@ impl State {
 			}
 
 			if *revents & POLLIN != 0 {
-				entry.flush_read(*fd, &mut self.nread)?;
+				entry.flush_read(*fd, &mut self.read)?;
 			}
 
 			if *revents & POLLOUT != 0 {
@@ -189,8 +218,10 @@ impl State {
 	}
 
 	pub fn log_stats(&self) {
-		let avg_read = self.nread as f64 / self.npoll as f64;
-		log::info!("Average socket reads per I/O poll: {:.2}", avg_read);
+		log::info!("Average socket reads per I/O poll: {:.2}", self.read as f64 / self.poll as f64);
+		log::info!("Average poll wait time: {:.2}us", self.wait.as_micros() as f64 / self.poll as f64);
+		log::info!("Average runtime tick time: {:.2}us", self.tick.as_micros() as f64 / self.poll as f64);
+		log::info!("Average timeout: {:.2}us", self.tout.as_micros() as f64 / self.poll as f64);
 	}
 }
 

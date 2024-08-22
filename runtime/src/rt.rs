@@ -23,10 +23,13 @@ pub fn exec(stakker: &mut Stakker, exit_fn: impl FnOnce()) -> Result {
 	ctrlc::set_handler(|| EXIT.store(true, Ordering::Relaxed)).map_err(|err| log::error!("Error occurred while setting Ctrl+C handler: {err}"))?;
 
 	GLOBAL.with(|this| {
-		let mut t = Instant::now();
-		let mut idle_pending = stakker.run(t, false);
+		let mut idle = false;
 
 		while stakker.not_shutdown() {
+			let t = Instant::now();
+
+			let idle_pending = stakker.run(t, idle);
+
 			// Break out of the loop if an exit is requested.
 			if EXIT.load(Ordering::Relaxed) {
 				// Call the exit function, which should defer the cleanup of remaining objects.
@@ -61,9 +64,8 @@ pub fn exec(stakker: &mut Stakker, exit_fn: impl FnOnce()) -> Result {
 				continue;
 			};
 
-			t = Instant::now();
-			// If there is still no I/O ready after a non-blocking poll, run the idle queue.
-			idle_pending = stakker.run(t, idle_pending && !is_io);
+			// Only process the idle queue if there are items in it, and if 
+			idle = idle_pending && !is_io;
 		}
 
 		Ok(())
