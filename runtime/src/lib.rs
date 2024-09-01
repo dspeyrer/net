@@ -10,7 +10,9 @@ use collections::bytes::{Cursor, Slice};
 use log::error;
 use stakker::Fwd;
 
+mod logger;
 mod rt;
+
 pub mod time;
 
 pub use rt::*;

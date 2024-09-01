@@ -8,7 +8,11 @@ use crate::GLOBAL;
 
 static EXIT: AtomicBool = AtomicBool::new(false);
 
+static LOGGER: crate::logger::Logger = crate::logger::Logger;
+
 pub fn init() -> Stakker {
+	// Set the global logger.
+	log::set_logger(&LOGGER).unwrap();
 	// Get both a monotonic and an absolute representation of the time.
 	let now = Instant::now();
 	let now_sys = SystemTime::now();
@@ -64,7 +68,7 @@ pub fn exec(stakker: &mut Stakker, exit_fn: impl FnOnce()) -> Result {
 				continue;
 			};
 
-			// Only process the idle queue if there are items in it, and if 
+			// Only process the idle queue if there are items in it, and if
 			idle = idle_pending && !is_io;
 		}
 

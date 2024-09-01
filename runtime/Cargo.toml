@@ -10,6 +10,8 @@ collections = { path = "../collections" }
 stakker = { version = "0.2.11", default-features = false }
 log = "0.4.21"
 ctrlc = "3.4.4"
+nu-ansi-term = "0.50.1"
+humantime = "2.1.0"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.52.0", features = ["Win32_Networking_WinSock"] }
