@@ -13,6 +13,8 @@ use stakker::Fwd;
 mod logger;
 mod rt;
 
+pub use logger::init as log_init;
+
 pub mod time;
 
 pub use rt::*;

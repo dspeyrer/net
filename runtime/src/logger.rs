@@ -4,7 +4,7 @@ use log::Level;
 use nu_ansi_term::ansi::RESET;
 use nu_ansi_term::{Color, Style};
 
-pub struct Logger;
+struct Logger;
 
 impl log::Log for Logger {
 	fn enabled(&self, _: &log::Metadata) -> bool {
@@ -35,4 +35,10 @@ impl log::Log for Logger {
 	}
 
 	fn flush(&self) {}
+}
+
+static LOGGER: crate::logger::Logger = crate::logger::Logger;
+
+pub fn init() {
+	log::set_logger(&LOGGER).unwrap();
 }
