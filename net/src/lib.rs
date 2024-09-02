@@ -9,7 +9,6 @@ extern crate alloc;
 
 pub mod dns;
 mod ip;
-#[cfg(feature = "pcap")]
 pub mod pcap;
 pub mod tcp;
 pub mod udp;
