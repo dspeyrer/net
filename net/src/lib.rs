@@ -2,7 +2,7 @@
 
 use core::net::{Ipv4Addr, Ipv6Addr};
 
-use stakker::{ActorOwn, CX};
+use stakker::{Actor, ActorOwn, CX};
 use wireguard::Wireguard;
 
 extern crate alloc;
@@ -30,9 +30,11 @@ pub struct Interface {
 }
 
 impl Interface {
-	pub fn init(_: CX![], link: ActorOwn<Wireguard>, v4: Ipv4Addr, v6: Ipv6Addr) -> Option<Self> {
+	pub fn init(cx: CX![], link: impl FnOnce(&mut stakker::Core, Actor<Self>) -> ActorOwn<Wireguard>, v4: Ipv4Addr, v6: Ipv6Addr) -> Option<Self> {
+		let actor = cx.access_actor().clone();
+
 		Some(Self {
-			link,
+			link: link(cx, actor),
 
 			#[cfg(feature = "pcap")]
 			pcap: pcap::Writer::new("./log.pcap").unwrap(),
