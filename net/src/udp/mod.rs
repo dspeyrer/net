@@ -46,26 +46,7 @@ impl Socket {
 	}
 
 	pub fn bind_eph(this: &mut super::Interface, cx: CX![super::Interface], callback: Fwd<(SocketAddr, Slice)>) -> Self {
-		let udp = &mut this.udp;
-
-		// Note: if all ports in the ephemeral range are full, this will loop forever.
-		let entry = loop {
-			// Increment, wrapping to the ephemeral port starting index
-			udp.nxt = udp.nxt.checked_add(1).unwrap_or(EPHEMERAL);
-
-			match udp.map.find_entry(&udp.nxt) {
-				map::Entry::Empty(entry) => break entry,
-				// If the port is already taken, continue
-				_ => {}
-			}
-		};
-
-		entry.insert(Entry { port: udp.nxt, callback });
-
-		Socket {
-			port: udp.nxt,
-			interface: cx.access_actor().clone(),
-		}
+		this.udp.bind_eph(cx, callback)
 	}
 
 	pub fn write(&self, SocketAddr { addr, port }: SocketAddr, f: impl FnOnce(Cursor) + 'static) {
@@ -155,6 +136,27 @@ pub(crate) struct Interface {
 }
 
 impl Interface {
+	pub fn bind_eph(&mut self, cx: CX![super::Interface], callback: Fwd<(SocketAddr, Slice)>) -> Socket {
+		// Note: if all ports in the ephemeral range are full, this will loop forever.
+		let entry = loop {
+			// Increment, wrapping to the ephemeral port starting index
+			self.nxt = self.nxt.checked_add(1).unwrap_or(EPHEMERAL);
+
+			match self.map.find_entry(&self.nxt) {
+				map::Entry::Empty(entry) => break entry,
+				// If the port is already taken, continue
+				_ => {}
+			}
+		};
+
+		entry.insert(Entry { port: self.nxt, callback });
+
+		Socket {
+			port: self.nxt,
+			interface: cx.access_actor().clone(),
+		}
+	}
+
 	pub fn recv<'a>(&'a self, interface: &ip::Interface, addr: IpAddr, buf: Slice) -> Result {
 		let len: u32 = buf.len().try_into().map_err(|_| log::warn!("UDP packet too big ({} bytes)", buf.len()))?;
 

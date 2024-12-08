@@ -6,12 +6,12 @@ use bilge::prelude::*;
 use collections::bytes::Slice;
 use log::{info, warn};
 use rand::Rng;
-use stakker::{fwd_to, Actor, FixedTimerKey, Ret, CX};
+use stakker::{FixedTimerKey, Fwd, Ret, CX};
 use utils::bytes::Cast;
 use utils::endian::{u16be, u32be, BigEndian};
 
 use crate::ip::SocketAddr;
-use crate::udp;
+use crate::{udp, Interface};
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -37,28 +37,12 @@ pub struct Resolver {
 }
 
 impl Resolver {
-	pub fn init(cx: CX![], net: Actor<super::Interface>, addr: IpAddr) -> Option<Self> {
-		let actor = cx.access_actor().clone();
+	pub fn init(cx: CX![Interface], udp: &mut udp::Interface, addr: IpAddr) -> Self {
+		let net = cx.access_actor().clone();
 
-		cx.defer(move |s| {
-			net.apply(s, move |n, c| {
-				let socket = udp::Socket::bind_eph(n, c, fwd_to!([actor], process() as (SocketAddr, Slice)));
+		let socket = udp.bind_eph(cx, Fwd::to_actor(net, |this, cx, (addr, bytes)| this.dns.process(cx, addr, bytes)));
 
-				c.defer(move |s| actor.apply_prep(s, move |_| Some(Self { socket, primary: addr, in_flight: HashMap::new() })))
-			})
-		});
-
-		None
-	}
-
-	pub fn v4(&mut self, cx: CX![], name: impl Into<String>, ret: Ret<Ipv4Addr>) {
-		self.v4_with(cx, name, self.primary, ret)
-	}
-
-	pub fn v4_with(&mut self, cx: CX![], name: impl Into<String>, server: IpAddr, ret: Ret<Ipv4Addr>) {
-		let id = self.gen_id();
-		let retry = self.query(cx, id, server, name.into());
-		self.in_flight.insert(id, Entry { ret, server, retry });
+		Self { socket, primary: addr, in_flight: HashMap::new() }
 	}
 
 	fn gen_id(&mut self) -> u16 {
@@ -72,7 +56,7 @@ impl Resolver {
 		id
 	}
 
-	fn query(&mut self, cx: CX![], id: u16, server: IpAddr, name: String) -> FixedTimerKey {
+	fn query(&mut self, cx: CX![Interface], id: u16, server: IpAddr, name: String) -> FixedTimerKey {
 		info!("Querying DNS server {} for {} (0x{:x})", server, name, id);
 
 		let n = name.clone();
@@ -122,20 +106,20 @@ impl Resolver {
 		let actor = cx.access_actor().clone();
 
 		cx.after(TIMEOUT, move |s| {
-			actor.apply(s, move |dns, cx| {
+			actor.apply(s, move |net, cx| {
 				warn!("DNS resolution for {name} timed out. Retrying...");
 
-				let server = dns.in_flight[&id].server;
+				let server = net.dns.in_flight[&id].server;
 
 				// Retry the query
-				let retry = dns.query(cx, id, server, name);
+				let retry = net.dns.query(cx, id, server, name);
 				// Set the new retry timer key
-				dns.in_flight.get_mut(&id).unwrap().retry = retry;
+				net.dns.in_flight.get_mut(&id).unwrap().retry = retry;
 			})
 		})
 	}
 
-	fn process(&mut self, cx: CX![], src: SocketAddr, buf: Slice) {
+	fn process(&mut self, cx: CX![Interface], src: SocketAddr, buf: Slice) {
 		let header: &Header = buf.split();
 
 		info!("Recieved DNS response for 0x{:x}", header.id);
@@ -206,6 +190,18 @@ impl Resolver {
 		ret.ret(*addr);
 		// Cancel the retry timer, since the request has been resolved
 		cx.timer_del(retry);
+	}
+}
+
+impl Interface {
+	pub fn resolve_v4(&mut self, cx: CX![Interface], name: impl Into<String>, ret: Ret<Ipv4Addr>) {
+		self.resolve_v4_with(cx, name, self.dns.primary, ret)
+	}
+
+	pub fn resolve_v4_with(&mut self, cx: CX![Interface], name: impl Into<String>, server: IpAddr, ret: Ret<Ipv4Addr>) {
+		let id = self.dns.gen_id();
+		let retry = self.dns.query(cx, id, server, name.into());
+		self.dns.in_flight.insert(id, Entry { ret, server, retry });
 	}
 }
 

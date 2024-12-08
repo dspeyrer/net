@@ -1,13 +1,14 @@
 #![feature(slice_as_chunks, write_all_vectored, trivial_bounds)]
 
 use core::net::{Ipv4Addr, Ipv6Addr};
+use std::net::IpAddr;
 
 use stakker::{Actor, ActorOwn, CX};
 use wireguard::Wireguard;
 
 extern crate alloc;
 
-pub mod dns;
+mod dns;
 mod ip;
 pub mod pcap;
 pub mod tcp;
@@ -27,11 +28,21 @@ pub struct Interface {
 
 	udp: udp::Interface,
 	tcp: tcp::Interface,
+
+	dns: dns::Resolver,
 }
 
 impl Interface {
-	pub fn init(cx: CX![], link: impl FnOnce(&mut stakker::Core, Actor<Self>) -> ActorOwn<Wireguard>, v4: Ipv4Addr, v6: Ipv6Addr) -> Option<Self> {
+	pub fn init(
+		cx: CX![],
+		link: impl FnOnce(&mut stakker::Core, Actor<Self>) -> ActorOwn<Wireguard>,
+		v4: Ipv4Addr,
+		v6: Ipv6Addr,
+		dns: IpAddr,
+	) -> Option<Self> {
 		let actor = cx.access_actor().clone();
+
+		let mut udp = udp::Interface::default();
 
 		Some(Self {
 			link: link(cx, actor),
@@ -43,7 +54,9 @@ impl Interface {
 
 			fragment: ip::fragment::Store::default(),
 
-			udp: udp::Interface::default(),
+			dns: dns::Resolver::init(cx, &mut udp, dns),
+
+			udp,
 			tcp: tcp::Interface::default(),
 		})
 	}
