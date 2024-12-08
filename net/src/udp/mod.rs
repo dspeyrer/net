@@ -3,7 +3,7 @@ use core::net::IpAddr;
 
 use collections::bytes::{Cursor, Slice};
 use collections::map::{self, Key, Map};
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 use stakker::{Actor, Fwd, CX};
 use utils::bytes::{self, Cast};
 use utils::endian::u16be;
@@ -23,27 +23,26 @@ struct Header {
 	csum: [u8; 2],
 }
 
-#[derive(Clone)]
 pub struct Socket {
 	port: u16,
 	interface: Actor<super::Interface>,
 }
 
 impl Socket {
-	pub fn bind(this: &mut super::Interface, cx: CX![super::Interface], port: u16, callback: Fwd<(SocketAddr, Slice)>) -> Result<Self> {
-		let udp = &mut this.udp;
+	pub fn bind(interface: Actor<super::Interface>, port: u16, callback: Fwd<(SocketAddr, Slice)>) -> Self {
+		let net = interface.clone();
 
-		let entry = match udp.map.find_entry(&port) {
-			map::Entry::Empty(entry) => entry,
-			_ => {
-				error!("Address already in use");
-				return Err(());
-			}
-		};
+		interface.defer(move |s| {
+			net.apply(s, move |this, _| {
+				match this.udp.map.find_entry(&port) {
+					map::Entry::Empty(entry) => entry.insert(Entry { port, callback }),
+					// Instead of panicking, this should call an error handler.
+					_ => panic!("Address already in use"),
+				};
+			});
+		});
 
-		entry.insert(Entry { port, callback });
-
-		Ok(Socket { port, interface: cx.access_actor().clone() })
+		Self { port, interface }
 	}
 
 	pub fn bind_eph(this: &mut super::Interface, cx: CX![super::Interface], callback: Fwd<(SocketAddr, Slice)>) -> Self {
@@ -111,8 +110,11 @@ impl Drop for Socket {
 		let port = self.port;
 		let i = self.interface.clone();
 
-		self.interface
-			.defer(move |s| i.apply(s, move |this, _| assert!(this.udp.map.find_entry(&port).remove().is_some())));
+		self.interface.defer(move |s| {
+			i.apply(s, move |this, _| {
+				this.udp.map.find_entry(&port).remove();
+			})
+		});
 	}
 }
 
@@ -123,8 +125,6 @@ pub struct Connected {
 
 impl Connected {
 	pub fn bind(this: &mut super::Interface, cx: CX![super::Interface], addr: SocketAddr, callback: impl Fn(Slice) + 'static) -> Self {
-		let udp = &mut this.udp;
-
 		let callback = Fwd::new(move |(src, buf)| {
 			if src == addr {
 				// The packet source matches the bound address
@@ -134,27 +134,9 @@ impl Connected {
 			}
 		});
 
-		// Note: if all ports in the ephemeral range are full, this will loop forever.
-		let entry = loop {
-			// Increment, wrapping to the ephemeral port starting index
-			udp.nxt = udp.nxt.checked_add(1).unwrap_or(EPHEMERAL);
+		let inner = Socket::bind_eph(this, cx, callback);
 
-			match udp.map.find_entry(&udp.nxt) {
-				map::Entry::Empty(entry) => break entry,
-				// If the port is already taken, continue
-				_ => {}
-			}
-		};
-
-		entry.insert(Entry { port: udp.nxt, callback });
-
-		Connected {
-			inner: Socket {
-				port: udp.nxt,
-				interface: cx.access_actor().clone(),
-			},
-			addr,
-		}
+		Connected { inner, addr }
 	}
 
 	pub fn addr(&self) -> &SocketAddr {
