@@ -27,7 +27,7 @@ pub fn exec(stakker: &mut Stakker, exit_fn: impl FnOnce()) -> Result {
 	GLOBAL.with(|this| {
 		let mut idle = false;
 
-		while stakker.not_shutdown() {
+		loop {
 			let t = Instant::now();
 
 			let idle_pending = stakker.run(t, idle);
