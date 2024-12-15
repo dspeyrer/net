@@ -13,6 +13,8 @@ use utils::bytes;
 use utils::bytes::Cast;
 use utils::error::*;
 
+use crate::App;
+
 const SNAPLEN: u32 = u32::MAX;
 
 #[derive(Clone)]
@@ -43,7 +45,7 @@ impl Writer {
 		Ok(Self { file })
 	}
 
-	pub fn log<A>(&self, cx: CX![A, super::Interface<A>], packet: &[u8]) -> Result {
+	pub fn log<A: App>(&self, cx: CX![A, super::Interface<A>], packet: &[u8]) -> Result {
 		let timestamp = time::system(cx)
 			.duration_since(SystemTime::UNIX_EPOCH)
 			.map_err(|_| warn!("Elapsed time since UNIX_EPOCH overflows"))?;

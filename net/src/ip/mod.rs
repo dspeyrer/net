@@ -18,6 +18,8 @@ pub mod fragment;
 
 pub use checksum::Checksum;
 
+use crate::App;
+
 #[derive(Clone, Copy)]
 pub struct Interface {
 	v4: Ipv4Addr,
@@ -48,7 +50,7 @@ impl Interface {
 	}
 }
 
-impl<A> crate::Interface<A> {
+impl<A: App> crate::Interface<A> {
 	pub fn recv(&mut self, _: CX![A], buf: Slice) {
 		#[cfg(feature = "pcap")]
 		let _ = self.pcap.log(&buf);

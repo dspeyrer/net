@@ -11,7 +11,7 @@ use utils::bytes::Cast;
 use utils::endian::{u16be, u32be, BigEndian};
 
 use crate::ip::SocketAddr;
-use crate::{udp, Interface};
+use crate::{udp, App, Interface};
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -27,7 +27,7 @@ struct Entry {
 	server: IpAddr,
 }
 
-pub struct Resolver<A: 'static> {
+pub struct Resolver<A: App + 'static> {
 	/// The UDP socket for DNS
 	socket: udp::Socket<A>,
 	/// The address of the primary DNS server
@@ -36,7 +36,7 @@ pub struct Resolver<A: 'static> {
 	in_flight: HashMap<u16, Entry>,
 }
 
-impl<A> Resolver<A> {
+impl<A: App> Resolver<A> {
 	pub fn init(cx: CX![A, Interface<A>], udp: &mut udp::Interface, addr: IpAddr) -> Self {
 		let net = cx.access_actor().clone();
 
@@ -193,7 +193,7 @@ impl<A> Resolver<A> {
 	}
 }
 
-impl<A> Interface<A> {
+impl<A: App> Interface<A> {
 	pub fn resolve_v4(&mut self, cx: CX![A, Interface<A>], name: impl Into<String>, ret: Ret<Ipv4Addr>) {
 		self.resolve_v4_with(cx, name, self.dns.primary, ret)
 	}

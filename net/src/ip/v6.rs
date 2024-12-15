@@ -11,6 +11,7 @@ use utils::error::*;
 use super::{Interface, Protocol};
 use crate::ip::ToS;
 use crate::ip::Version::V6;
+use crate::App;
 
 #[bitsize(32)]
 #[derive(FromBits)]
@@ -32,7 +33,7 @@ struct Header {
 }
 
 impl Interface {
-	pub fn recv_v6<A>(self, interface: &mut crate::Interface<A>, buf: Slice) -> Result {
+	pub fn recv_v6<A: App>(self, interface: &mut crate::Interface<A>, buf: Slice) -> Result {
 		let header: &Header = buf.split();
 
 		if header.dst != self.v6 {

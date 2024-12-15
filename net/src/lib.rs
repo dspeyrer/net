@@ -16,7 +16,7 @@ pub mod udp;
 
 pub use ip::SocketAddr;
 
-pub struct Interface<A: 'static> {
+pub struct Interface<A: App + 'static> {
 	link: ActorOwn<Wireguard, A>,
 
 	#[cfg(feature = "pcap")]
@@ -32,7 +32,11 @@ pub struct Interface<A: 'static> {
 	dns: dns::Resolver<A>,
 }
 
-impl<A> Interface<A> {
+pub trait App: Sized {
+	fn net(&self) -> &Actor<Interface<Self>, Self>;
+}
+
+impl<A: App> Interface<A> {
 	pub fn init(
 		cx: CX![A],
 		link: impl FnOnce(&mut stakker::Core<A>, Actor<Self, A>) -> ActorOwn<Wireguard, A>,

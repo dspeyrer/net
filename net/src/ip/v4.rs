@@ -11,6 +11,7 @@ use utils::error::*;
 use super::{fragment, Interface};
 use crate::ip::Version::V4;
 use crate::ip::{Checksum, Protocol, ToS};
+use crate::App;
 
 #[bitsize(8)]
 #[derive(FromBits, Cast)]
@@ -45,7 +46,7 @@ pub(super) struct Header {
 }
 
 impl Interface {
-	pub fn recv_v4<A>(self, interface: &mut crate::Interface<A>, buf: Slice) -> Result {
+	pub fn recv_v4<A: App>(self, interface: &mut crate::Interface<A>, buf: Slice) -> Result {
 		let header: &Header = buf.split();
 
 		if header.dst != self.v4 {

@@ -4,13 +4,14 @@ use core::net::IpAddr;
 use collections::bytes::{Cursor, Slice};
 use collections::map::{self, Key, Map};
 use log::{debug, info, warn};
-use stakker::{Actor, Fwd, CX};
+use stakker::{Deferrer, Fwd, CX};
 use utils::bytes::{self, Cast};
 use utils::endian::u16be;
 use utils::error::*;
 
 use crate::ip::Protocol::Udp;
 use crate::ip::{self, SocketAddr, ToS};
+use crate::App;
 
 const EPHEMERAL: u16 = 49152;
 
@@ -23,16 +24,16 @@ struct Header {
 	csum: [u8; 2],
 }
 
-pub struct Socket<A: 'static> {
+pub struct Socket<A: App + 'static> {
 	port: u16,
-	interface: Actor<super::Interface<A>, A>,
+	deferrer: Deferrer<A>,
 }
 
-impl<A: 'static> Socket<A> {
-	pub fn bind(interface: Actor<super::Interface<A>, A>, port: u16, callback: Fwd<(SocketAddr, Slice)>) -> Self {
-		let net = interface.clone();
+impl<A: App + 'static> Socket<A> {
+	pub fn bind(deferrer: Deferrer<A>, port: u16, callback: Fwd<(SocketAddr, Slice)>) -> Self {
+		deferrer.defer(move |s| {
+			let net = s.app().net().clone();
 
-		interface.defer(move |s| {
 			net.apply(s, move |this, _| {
 				match this.udp.map.find_entry(&port) {
 					map::Entry::Empty(entry) => entry.insert(Entry { port, callback }),
@@ -42,7 +43,7 @@ impl<A: 'static> Socket<A> {
 			});
 		});
 
-		Self { port, interface }
+		Self { port, deferrer }
 	}
 
 	pub fn bind_eph(this: &mut super::Interface<A>, cx: CX![A, super::Interface<A>], callback: Fwd<(SocketAddr, Slice)>) -> Self {
@@ -54,9 +55,9 @@ impl<A: 'static> Socket<A> {
 
 		let src = self.port;
 
-		let actor = self.interface.access_actor().clone();
+		self.deferrer.defer(move |s| {
+			let actor = s.app().net().clone();
 
-		self.interface.defer(move |s| {
 			actor.apply(s, move |this, cx| {
 				let mut csum = this.ip.pseudo_checksum(Udp, addr);
 
@@ -86,25 +87,26 @@ impl<A: 'static> Socket<A> {
 	}
 }
 
-impl<A: 'static> Drop for Socket<A> {
+impl<A: App + 'static> Drop for Socket<A> {
 	fn drop(&mut self) {
 		let port = self.port;
-		let i = self.interface.clone();
 
-		self.interface.defer(move |s| {
-			i.apply(s, move |this, _| {
+		self.deferrer.defer(move |s| {
+			let actor = s.app().net().clone();
+
+			actor.apply(s, move |this, _| {
 				this.udp.map.find_entry(&port).remove();
 			})
 		});
 	}
 }
 
-pub struct Connected<A: 'static> {
+pub struct Connected<A: App + 'static> {
 	inner: Socket<A>,
 	addr: SocketAddr,
 }
 
-impl<A> Connected<A> {
+impl<A: App> Connected<A> {
 	pub fn bind(this: &mut super::Interface<A>, cx: CX![A, super::Interface<A>], addr: SocketAddr, callback: impl Fn(Slice) + 'static) -> Self {
 		let callback = Fwd::new(move |(src, buf)| {
 			if src == addr {
@@ -136,7 +138,7 @@ pub(crate) struct Interface {
 }
 
 impl Interface {
-	pub fn bind_eph<A>(&mut self, cx: CX![A, super::Interface<A>], callback: Fwd<(SocketAddr, Slice)>) -> Socket<A> {
+	pub fn bind_eph<A: App>(&mut self, cx: CX![A, super::Interface<A>], callback: Fwd<(SocketAddr, Slice)>) -> Socket<A> {
 		// Note: if all ports in the ephemeral range are full, this will loop forever.
 		let entry = loop {
 			// Increment, wrapping to the ephemeral port starting index
@@ -153,7 +155,7 @@ impl Interface {
 
 		Socket {
 			port: self.nxt,
-			interface: cx.access_actor().clone(),
+			deferrer: cx.deferrer(),
 		}
 	}
 
