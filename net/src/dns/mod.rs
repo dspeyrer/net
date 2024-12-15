@@ -27,17 +27,17 @@ struct Entry {
 	server: IpAddr,
 }
 
-pub struct Resolver {
+pub struct Resolver<A: 'static> {
 	/// The UDP socket for DNS
-	socket: udp::Socket,
+	socket: udp::Socket<A>,
 	/// The address of the primary DNS server
 	primary: IpAddr,
 	/// In-flight DNS requests and their corresponding callbacks
 	in_flight: HashMap<u16, Entry>,
 }
 
-impl Resolver {
-	pub fn init(cx: CX![Interface], udp: &mut udp::Interface, addr: IpAddr) -> Self {
+impl<A> Resolver<A> {
+	pub fn init(cx: CX![A, Interface<A>], udp: &mut udp::Interface, addr: IpAddr) -> Self {
 		let net = cx.access_actor().clone();
 
 		let socket = udp.bind_eph(cx, Fwd::to_actor(net, |this, cx, (addr, bytes)| this.dns.process(cx, addr, bytes)));
@@ -56,7 +56,7 @@ impl Resolver {
 		id
 	}
 
-	fn query(&mut self, cx: CX![Interface], id: u16, server: IpAddr, name: String) -> FixedTimerKey {
+	fn query(&mut self, cx: CX![A, Interface<A>], id: u16, server: IpAddr, name: String) -> FixedTimerKey {
 		info!("Querying DNS server {} for {} (0x{:x})", server, name, id);
 
 		let n = name.clone();
@@ -119,7 +119,7 @@ impl Resolver {
 		})
 	}
 
-	fn process(&mut self, cx: CX![Interface], src: SocketAddr, buf: Slice) {
+	fn process(&mut self, cx: CX![A, Interface<A>], src: SocketAddr, buf: Slice) {
 		let header: &Header = buf.split();
 
 		info!("Recieved DNS response for 0x{:x}", header.id);
@@ -193,12 +193,12 @@ impl Resolver {
 	}
 }
 
-impl Interface {
-	pub fn resolve_v4(&mut self, cx: CX![Interface], name: impl Into<String>, ret: Ret<Ipv4Addr>) {
+impl<A> Interface<A> {
+	pub fn resolve_v4(&mut self, cx: CX![A, Interface<A>], name: impl Into<String>, ret: Ret<Ipv4Addr>) {
 		self.resolve_v4_with(cx, name, self.dns.primary, ret)
 	}
 
-	pub fn resolve_v4_with(&mut self, cx: CX![Interface], name: impl Into<String>, server: IpAddr, ret: Ret<Ipv4Addr>) {
+	pub fn resolve_v4_with(&mut self, cx: CX![A, Interface<A>], name: impl Into<String>, server: IpAddr, ret: Ret<Ipv4Addr>) {
 		let id = self.dns.gen_id();
 		let retry = self.dns.query(cx, id, server, name.into());
 		self.dns.in_flight.insert(id, Entry { ret, server, retry });

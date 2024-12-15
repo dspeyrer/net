@@ -16,8 +16,8 @@ pub mod udp;
 
 pub use ip::SocketAddr;
 
-pub struct Interface {
-	link: ActorOwn<Wireguard>,
+pub struct Interface<A: 'static> {
+	link: ActorOwn<Wireguard, A>,
 
 	#[cfg(feature = "pcap")]
 	pcap: pcap::Writer,
@@ -29,22 +29,22 @@ pub struct Interface {
 	udp: udp::Interface,
 	tcp: tcp::Interface,
 
-	dns: dns::Resolver,
+	dns: dns::Resolver<A>,
 }
 
-impl Interface {
+impl<A> Interface<A> {
 	pub fn init(
-		cx: CX![],
-		link: impl FnOnce(&mut stakker::Core, Actor<Self>) -> ActorOwn<Wireguard>,
+		cx: CX![A],
+		link: impl FnOnce(&mut stakker::Core<A>, Actor<Self, A>) -> ActorOwn<Wireguard, A>,
 		v4: Ipv4Addr,
 		v6: Ipv6Addr,
 		dns: IpAddr,
-	) -> Option<Self> {
+	) -> Self {
 		let actor = cx.access_actor().clone();
 
 		let mut udp = udp::Interface::default();
 
-		Some(Self {
+		Self {
 			link: link(cx, actor),
 
 			#[cfg(feature = "pcap")]
@@ -58,6 +58,6 @@ impl Interface {
 
 			udp,
 			tcp: tcp::Interface::default(),
-		})
+		}
 	}
 }

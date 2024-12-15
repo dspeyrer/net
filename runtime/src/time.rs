@@ -1,7 +1,7 @@
 use std::time::SystemTime;
 
 /// Get the current system time.
-pub fn system(core: &stakker::Core) -> SystemTime {
+pub fn system<A>(core: &stakker::Core<A>) -> SystemTime {
 	// Get the system time of initialisation of the runtime.
 	let time = core.systime();
 	// Get the duration that has passed since the runtime was initialised.
@@ -11,7 +11,7 @@ pub fn system(core: &stakker::Core) -> SystemTime {
 }
 
 /// Get the UNIX time in seconds.
-pub fn unix(core: &stakker::Core) -> u32 {
+pub fn unix<A>(core: &stakker::Core<A>) -> u32 {
 	// Get the system time.
 	let time = system(core);
 

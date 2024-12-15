@@ -45,7 +45,7 @@ pub struct Simplex {
 }
 
 impl Simplex {
-	fn initiator(cx: CX![Wireguard], key: Aead) -> Self {
+	fn initiator<A>(cx: CX![A, Wireguard], key: Aead) -> Self {
 		Self { key, win: Window::empty(), time: cx.now() }
 	}
 
@@ -53,7 +53,7 @@ impl Simplex {
 		Self { key, win: Window::new(idx), time }
 	}
 
-	fn open_checked(&mut self, cx: CX![Wireguard], ctr: u64, buf: &mut Slice) -> Result<Duration> {
+	fn open_checked<A>(&mut self, cx: CX![A, Wireguard], ctr: u64, buf: &mut Slice) -> Result<Duration> {
 		let elapsed = cx.now() - self.time;
 
 		if elapsed >= REJECT_AFTER_TIME || ctr >= REJECT_AFTER_MESSAGES {
@@ -66,7 +66,7 @@ impl Simplex {
 		Ok(elapsed)
 	}
 
-	pub fn open(&mut self, cx: CX![Wireguard], ctr: u64, buf: &mut Slice) -> Result {
+	pub fn open<A>(&mut self, cx: CX![A, Wireguard], ctr: u64, buf: &mut Slice) -> Result {
 		self.open_checked(cx, ctr, buf)?;
 		Ok(())
 	}
@@ -82,7 +82,7 @@ pub struct Tunnel {
 }
 
 impl Tunnel {
-	pub fn new(cx: CX![Wireguard], chain: Chain, sidx: u32) -> Self {
+	pub fn new<A>(cx: CX![A, Wireguard], chain: Chain, sidx: u32) -> Self {
 		let (send, recv) = chain.consume();
 
 		Self {
@@ -96,18 +96,18 @@ impl Tunnel {
 	}
 
 	/// Returns whether a rekey is needed.
-	pub fn open(&mut self, cx: CX![Wireguard], ctr: u64, buf: &mut Slice) -> Result<bool> {
+	pub fn open<A>(&mut self, cx: CX![A, Wireguard], ctr: u64, buf: &mut Slice) -> Result<bool> {
 		let elapsed = self.recv.open_checked(cx, ctr, buf)?;
 		let rekey = self.role == Role::Initiator && elapsed >= REJECT_AFTER_TIME - KEEPALIVE_TIMEOUT - REKEY_TIMEOUT;
 		Ok(rekey)
 	}
 
-	pub fn is_send_expired(&self, cx: CX![Wireguard]) -> bool {
+	pub fn is_send_expired<A>(&self, cx: CX![A, Wireguard]) -> bool {
 		cx.now().duration_since(self.recv.time) >= REJECT_AFTER_TIME || self.sctr + 1 >= REJECT_AFTER_MESSAGES
 	}
 
 	/// Returns whether a rekey is needed. Assumes is_send_expired has been verified to be false.
-	pub fn send(&mut self, cx: CX![Wireguard], buf: Cursor, f: impl FnOnce(Cursor)) -> bool {
+	pub fn send<A>(&mut self, cx: CX![A, Wireguard], buf: Cursor, f: impl FnOnce(Cursor)) -> bool {
 		let elapsed = cx.now() - self.recv.time;
 
 		let ctr = self.sctr;
@@ -140,7 +140,7 @@ pub struct Next {
 }
 
 impl Next {
-	pub fn new(cx: CX![Wireguard], chain: Chain, s_idx: u32, mac: Mac1) -> Self {
+	pub fn new<A>(cx: CX![A, Wireguard], chain: Chain, s_idx: u32, mac: Mac1) -> Self {
 		let (recv, send) = chain.consume();
 
 		Self {

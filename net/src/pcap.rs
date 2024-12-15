@@ -43,7 +43,7 @@ impl Writer {
 		Ok(Self { file })
 	}
 
-	pub fn log(&self, cx: CX![super::Interface], packet: &[u8]) -> Result {
+	pub fn log<A>(&self, cx: CX![A, super::Interface<A>], packet: &[u8]) -> Result {
 		let timestamp = time::system(cx)
 			.duration_since(SystemTime::UNIX_EPOCH)
 			.map_err(|_| warn!("Elapsed time since UNIX_EPOCH overflows"))?;

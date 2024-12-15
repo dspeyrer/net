@@ -34,7 +34,7 @@ pub struct ResponderHandshake<'a> {
 }
 
 impl InitiatorHandshake {
-	pub fn create_initiation(cx: CX![Wireguard], i: &Interface, r: &Noise, msg: &mut Initiation) -> Self {
+	pub fn create_initiation<A>(cx: CX![A, Wireguard], i: &Interface, r: &Noise, msg: &mut Initiation) -> Self {
 		let mut hash = r.hash.clone();
 		let mut chain = Chain::default();
 

@@ -45,7 +45,7 @@ pub(super) struct Header {
 }
 
 impl Interface {
-	pub fn recv_v4(self, interface: &mut crate::Interface, buf: Slice) -> Result {
+	pub fn recv_v4<A>(self, interface: &mut crate::Interface<A>, buf: Slice) -> Result {
 		let header: &Header = buf.split();
 
 		if header.dst != self.v4 {

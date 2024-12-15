@@ -48,8 +48,8 @@ impl Interface {
 	}
 }
 
-impl crate::Interface {
-	pub fn recv(&mut self, _: CX![], buf: Slice) {
+impl<A> crate::Interface<A> {
+	pub fn recv(&mut self, _: CX![A], buf: Slice) {
 		#[cfg(feature = "pcap")]
 		let _ = self.pcap.log(&buf);
 
@@ -62,7 +62,7 @@ impl crate::Interface {
 		};
 	}
 
-	pub(crate) fn write(&mut self, _: CX![], protocol: Protocol, addr: IpAddr, tos: ToS, f: impl FnOnce(Cursor) + 'static) {
+	pub(crate) fn write(&mut self, _: CX![A], protocol: Protocol, addr: IpAddr, tos: ToS, f: impl FnOnce(Cursor) + 'static) {
 		let ip = self.ip;
 		#[cfg(feature = "pcap")]
 		let pcap = self.pcap.clone();

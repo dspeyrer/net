@@ -42,7 +42,7 @@ impl Interface {
 		Self { key, pubkey, hash, mac, link }
 	}
 
-	pub fn handle_initiation(&mut self, cx: CX![Wireguard], peers: &mut Map<Peer, 1>, msg: &mut Initiation) -> Result {
+	pub fn handle_initiation<A>(&mut self, cx: CX![A, Wireguard], peers: &mut Map<Peer, 1>, msg: &mut Initiation) -> Result {
 		info!("Recieved initiation packet");
 
 		let idx = msg.idx;
@@ -95,7 +95,7 @@ impl Peer {
 		this
 	}
 
-	pub fn write(&mut self, cx: CX![Wireguard], wg: &Interface, f: impl FnOnce(Cursor) + 'static, is_keepalive: bool) -> Result {
+	pub fn write<A>(&mut self, cx: CX![A, Wireguard], wg: &Interface, f: impl FnOnce(Cursor) + 'static, is_keepalive: bool) -> Result {
 		let rekey = match &mut self.wheel.pair {
 			Some((_, ref mut tun)) if !tun.is_send_expired(cx) => {
 				let cx1 = &mut *cx;
@@ -121,7 +121,7 @@ impl Peer {
 		Ok(())
 	}
 
-	fn rekey(&mut self, cx: CX![Wireguard], wg: &Interface) -> Result {
+	fn rekey<A>(&mut self, cx: CX![A, Wireguard], wg: &Interface) -> Result {
 		if !self.timers.is_rekeying() {
 			// Only send an initiation packet if there is not one queued already.
 			self.create_initiation(cx, wg)
@@ -130,19 +130,19 @@ impl Peer {
 		}
 	}
 
-	pub fn create_initiation(&mut self, cx: CX![Wireguard], wg: &Interface) -> Result {
+	pub fn create_initiation<A>(&mut self, cx: CX![A, Wireguard], wg: &Interface) -> Result {
 		self.wheel.sent = Some(self.hs.create_initiation(cx, wg)?);
 		self.timers.send_init(cx);
 		Ok(())
 	}
 
-	pub fn create_response(&mut self, cx: CX![Wireguard], wg: &Interface, idx: u32, state: ResponderHandshake) -> Result {
+	pub fn create_response<A>(&mut self, cx: CX![A, Wireguard], wg: &Interface, idx: u32, state: ResponderHandshake) -> Result {
 		self.wheel.next = Some((idx, self.hs.create_response(cx, wg, idx, state)?));
 		self.timers.send_resp(cx);
 		Ok(())
 	}
 
-	pub fn handle_response(&mut self, cx: CX![Wireguard], i: &Interface, msg: &mut Response) -> Result {
+	pub fn handle_response<A>(&mut self, cx: CX![A, Wireguard], i: &Interface, msg: &mut Response) -> Result {
 		info!("Recieved response packet for connection 0x{:x}", msg.rcv_idx);
 
 		let sent = self
@@ -165,7 +165,7 @@ impl Peer {
 		Ok(())
 	}
 
-	pub fn handle_data<'a>(&mut self, cx: CX![Wireguard], wg: &Interface, buf: &mut Slice) -> Result {
+	pub fn handle_data<'a, A>(&mut self, cx: CX![A, Wireguard], wg: &Interface, buf: &mut Slice) -> Result {
 		let msg: &Data = buf.split();
 
 		match &mut self.wheel {
@@ -198,7 +198,7 @@ impl Peer {
 		Ok(())
 	}
 
-	pub fn handle_cookie(&mut self, cx: CX![Wireguard], msg: &mut Cookie) -> Result {
+	pub fn handle_cookie<A>(&mut self, cx: CX![A, Wireguard], msg: &mut Cookie) -> Result {
 		let mac = match &self.wheel {
 			Wheel { next: Some((_, Next { sidx: idx, mac, .. })), .. } | Wheel { sent: Some(SentHandshake { idx, mac, .. }), .. }
 				if msg.idx == *idx =>
@@ -251,7 +251,7 @@ impl Noise {
 		Ok(())
 	}
 
-	fn create_initiation(&mut self, cx: CX![Wireguard], wg: &Interface) -> Result<SentHandshake> {
+	fn create_initiation<A>(&mut self, cx: CX![A, Wireguard], wg: &Interface) -> Result<SentHandshake> {
 		wg.link.write(|mut buf| {
 			let msg: &mut Initiation = buf.fork().cast();
 			msg.tag = Tag::INITIATION;
@@ -268,7 +268,7 @@ impl Noise {
 		})
 	}
 
-	fn create_response(&mut self, cx: CX![Wireguard], wg: &Interface, rcv_idx: u32, state: ResponderHandshake) -> Result<Next> {
+	fn create_response<A>(&mut self, cx: CX![A, Wireguard], wg: &Interface, rcv_idx: u32, state: ResponderHandshake) -> Result<Next> {
 		wg.link.write(|mut buf| {
 			let res: &mut Response = buf.fork().cast();
 			res.tag = Tag::RESPONSE;
@@ -287,7 +287,7 @@ impl Noise {
 		})
 	}
 
-	fn handle_response(&self, cx: CX![Wireguard], state: &InitiatorHandshake, i: &Interface, msg: &mut Response) -> Result<Tunnel> {
+	fn handle_response<A>(&self, cx: CX![A, Wireguard], state: &InitiatorHandshake, i: &Interface, msg: &mut Response) -> Result<Tunnel> {
 		let chain = state
 			.clone()
 			.consume_response(i, self, msg)

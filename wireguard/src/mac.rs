@@ -53,7 +53,7 @@ impl CookieMac {
 		Self { mac1, mac2: None, aead }
 	}
 
-	pub fn check(&mut self, cx: CX![Wireguard], bytes: &[u8]) -> Result {
+	pub fn check<A>(&mut self, cx: CX![A, Wireguard], bytes: &[u8]) -> Result {
 		let m1 = bytes.len() - 32;
 		let m2 = bytes.len() - 16;
 
@@ -79,7 +79,7 @@ impl CookieMac {
 	}
 
 	#[must_use]
-	pub fn write(&mut self, cx: CX![Wireguard], mut buf: Cursor) -> Mac1 {
+	pub fn write<A>(&mut self, cx: CX![A, Wireguard], mut buf: Cursor) -> Mac1 {
 		let (data, mac1) = buf.fork().rsplit();
 
 		Mac::new(&self.mac1).chain(&*data).finalize_into(mac1);
@@ -97,7 +97,7 @@ impl CookieMac {
 		m1
 	}
 
-	pub fn handle_cookie(&mut self, cx: CX![Wireguard], msg: &mut Cookie, last_mac: &Mac1) -> Result {
+	pub fn handle_cookie<A>(&mut self, cx: CX![A, Wireguard], msg: &mut Cookie, last_mac: &Mac1) -> Result {
 		let (tau, tag): (&mut GenericArray<u8, U16>, &mut Tag) = <&mut GenericArray<_, _>>::from(&mut msg.cookie).split();
 		self.aead
 			.decrypt_in_place_detached((&msg.nonce).into(), &last_mac.0, tau, tag)
@@ -108,7 +108,7 @@ impl CookieMac {
 		Ok(())
 	}
 
-	fn tau(&mut self, cx: CX![Wireguard]) -> Option<Mac> {
+	fn tau<A>(&mut self, cx: CX![A, Wireguard]) -> Option<Mac> {
 		let tau = &self.mac2?;
 
 		if cx.now() - tau.time >= Duration::from_secs(120) {

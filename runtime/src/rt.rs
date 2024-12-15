@@ -1,27 +1,27 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
-use stakker::Stakker;
+use stakker::{Core, Stakker};
 use utils::error::Result;
 
 use crate::GLOBAL;
 
 static EXIT: AtomicBool = AtomicBool::new(false);
 
-pub fn init() -> Stakker {
+pub fn init<A>(f: impl FnOnce(&mut Core<A>) -> A) -> Stakker<A> {
 	// Set the global logger.
 	crate::log_init();
 	// Get both a monotonic and an absolute representation of the time.
 	let now = Instant::now();
 	let now_sys = SystemTime::now();
 	// Initialise Stakker with the monotonic time.
-	let mut s = Stakker::new(now);
+	let mut s = Stakker::new(now, f);
 	// Set the Stakker systime to the start time.
 	s.set_systime(Some(now_sys));
 	s
 }
 
-pub fn exec(stakker: &mut Stakker, exit_fn: impl FnOnce()) -> Result {
+pub fn exec<A>(stakker: &mut Stakker<A>, exit_fn: impl FnOnce()) -> Result {
 	ctrlc::set_handler(|| EXIT.store(true, Ordering::Relaxed)).map_err(|err| log::error!("Error occurred while setting Ctrl+C handler: {err}"))?;
 
 	GLOBAL.with(|this| {

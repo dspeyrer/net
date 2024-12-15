@@ -23,13 +23,13 @@ struct Header {
 	csum: [u8; 2],
 }
 
-pub struct Socket {
+pub struct Socket<A: 'static> {
 	port: u16,
-	interface: Actor<super::Interface>,
+	interface: Actor<super::Interface<A>, A>,
 }
 
-impl Socket {
-	pub fn bind(interface: Actor<super::Interface>, port: u16, callback: Fwd<(SocketAddr, Slice)>) -> Self {
+impl<A: 'static> Socket<A> {
+	pub fn bind(interface: Actor<super::Interface<A>, A>, port: u16, callback: Fwd<(SocketAddr, Slice)>) -> Self {
 		let net = interface.clone();
 
 		interface.defer(move |s| {
@@ -45,7 +45,7 @@ impl Socket {
 		Self { port, interface }
 	}
 
-	pub fn bind_eph(this: &mut super::Interface, cx: CX![super::Interface], callback: Fwd<(SocketAddr, Slice)>) -> Self {
+	pub fn bind_eph(this: &mut super::Interface<A>, cx: CX![A, super::Interface<A>], callback: Fwd<(SocketAddr, Slice)>) -> Self {
 		this.udp.bind_eph(cx, callback)
 	}
 
@@ -86,7 +86,7 @@ impl Socket {
 	}
 }
 
-impl Drop for Socket {
+impl<A: 'static> Drop for Socket<A> {
 	fn drop(&mut self) {
 		let port = self.port;
 		let i = self.interface.clone();
@@ -99,13 +99,13 @@ impl Drop for Socket {
 	}
 }
 
-pub struct Connected {
-	inner: Socket,
+pub struct Connected<A: 'static> {
+	inner: Socket<A>,
 	addr: SocketAddr,
 }
 
-impl Connected {
-	pub fn bind(this: &mut super::Interface, cx: CX![super::Interface], addr: SocketAddr, callback: impl Fn(Slice) + 'static) -> Self {
+impl<A> Connected<A> {
+	pub fn bind(this: &mut super::Interface<A>, cx: CX![A, super::Interface<A>], addr: SocketAddr, callback: impl Fn(Slice) + 'static) -> Self {
 		let callback = Fwd::new(move |(src, buf)| {
 			if src == addr {
 				// The packet source matches the bound address
@@ -136,7 +136,7 @@ pub(crate) struct Interface {
 }
 
 impl Interface {
-	pub fn bind_eph(&mut self, cx: CX![super::Interface], callback: Fwd<(SocketAddr, Slice)>) -> Socket {
+	pub fn bind_eph<A>(&mut self, cx: CX![A, super::Interface<A>], callback: Fwd<(SocketAddr, Slice)>) -> Socket<A> {
 		// Note: if all ports in the ephemeral range are full, this will loop forever.
 		let entry = loop {
 			// Increment, wrapping to the ephemeral port starting index

@@ -32,7 +32,7 @@ struct Header {
 }
 
 impl Interface {
-	pub fn recv_v6(self, interface: &mut crate::Interface, buf: Slice) -> Result {
+	pub fn recv_v6<A>(self, interface: &mut crate::Interface<A>, buf: Slice) -> Result {
 		let header: &Header = buf.split();
 
 		if header.dst != self.v6 {
