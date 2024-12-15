@@ -8,7 +8,7 @@ use std::time::{Duration, SystemTime};
 
 use log::warn;
 use runtime::time;
-use stakker::CX;
+use stakker::Core;
 use utils::bytes;
 use utils::bytes::Cast;
 use utils::error::*;
@@ -45,7 +45,7 @@ impl Writer {
 		Ok(Self { file })
 	}
 
-	pub fn log<A: App>(&self, cx: CX![A, super::Interface<A>], packet: &[u8]) -> Result {
+	pub fn log<A: App>(&self, cx: &mut Core<A>, packet: &[u8]) -> Result {
 		let timestamp = time::system(cx)
 			.duration_since(SystemTime::UNIX_EPOCH)
 			.map_err(|_| warn!("Elapsed time since UNIX_EPOCH overflows"))?;

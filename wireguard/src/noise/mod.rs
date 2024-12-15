@@ -8,7 +8,7 @@ use collections::map::Map;
 pub use hash::Hash;
 use log::warn;
 use runtime::time;
-use stakker::CX;
+use stakker::Core;
 use tai64::Tai64N;
 use utils::error::*;
 use x25519_dalek::{PublicKey, StaticSecret as SecretKey};
@@ -16,7 +16,6 @@ use x25519_dalek::{PublicKey, StaticSecret as SecretKey};
 pub use self::chain::Chain;
 use crate::packet::{Initiation, Response};
 use crate::tunnel::{Interface, Noise, Peer};
-use crate::Wireguard;
 
 pub type A32 = GenericArray<u8, U32>;
 
@@ -34,7 +33,7 @@ pub struct ResponderHandshake<'a> {
 }
 
 impl InitiatorHandshake {
-	pub fn create_initiation<A>(cx: CX![A, Wireguard], i: &Interface, r: &Noise, msg: &mut Initiation) -> Self {
+	pub fn create_initiation<A>(cx: &mut Core<A>, i: &Interface, r: &Noise, msg: &mut Initiation) -> Self {
 		let mut hash = r.hash.clone();
 		let mut chain = Chain::default();
 

@@ -5,7 +5,7 @@ use std::net::SocketAddrV4;
 use bilge::prelude::*;
 use collections::bytes::{Cursor, Slice};
 use log::warn;
-use stakker::{call, CX};
+use stakker::Core;
 use utils::bytes::{self, Cast};
 use utils::error::*;
 
@@ -64,23 +64,20 @@ impl<A: App> crate::Interface<A> {
 		};
 	}
 
-	pub(crate) fn write(&mut self, protocol: Protocol, addr: IpAddr, tos: ToS, f: impl FnOnce(Cursor) + 'static) {
+	pub(crate) fn write(&mut self, cx: &mut Core<A>, protocol: Protocol, addr: IpAddr, tos: ToS, f: impl FnOnce(Cursor) + 'static) {
 		let ip = self.ip;
 		#[cfg(feature = "pcap")]
 		let pcap = self.pcap.clone();
 
-		call!(
-			[self.link],
-			write(move |mut buf: Cursor<'_>| {
-				match addr {
-					IpAddr::V4(addr) => ip.write_v4(buf.fork(), protocol, addr, tos, f),
-					IpAddr::V6(addr) => ip.write_v6(buf.fork(), protocol, addr, tos, f),
-				}
+		self.link.write(cx, move |mut buf: Cursor<'_>| {
+			match addr {
+				IpAddr::V4(addr) => ip.write_v4(buf.fork(), protocol, addr, tos, f),
+				IpAddr::V6(addr) => ip.write_v6(buf.fork(), protocol, addr, tos, f),
+			}
 
-				#[cfg(feature = "pcap")]
-				let _ = pcap.log(&buf[..buf.pivot()]);
-			})
-		)
+			#[cfg(feature = "pcap")]
+			let _ = pcap.log(&buf[..buf.pivot()]);
+		});
 	}
 
 	pub(crate) fn handle<'a>(&'a mut self, proto: Protocol, addr: IpAddr, buf: Slice) -> Result {

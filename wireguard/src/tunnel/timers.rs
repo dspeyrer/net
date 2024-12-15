@@ -3,9 +3,9 @@ use std::time::{Duration, Instant};
 use collections::map::Index;
 use log::{debug, info, trace};
 use rand::Rng;
-use stakker::{timer_max, FixedTimerKey, MaxTimerKey, CX};
+use stakker::{timer_max, Core, FixedTimerKey, MaxTimerKey, Stakker};
 
-use crate::Wireguard;
+use crate::App;
 
 pub const REKEY_TIMEOUT: Duration = Duration::from_secs(5);
 pub const REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(90);
@@ -43,13 +43,13 @@ impl Timers {
 	}
 
 	/// Returns whether REKEY_ATTEMPT_TIME has already elapsed.
-	pub fn rekey_elapsed<A>(&self, cx: CX![A, Wireguard]) -> bool {
+	pub fn rekey_elapsed<A>(&self, cx: &mut Core<A>) -> bool {
 		let Some(t) = self.rekey_start.as_ref() else { return false };
 		cx.now() - *t >= REKEY_ATTEMPT_TIME
 	}
 
 	/// Call when a data packet is sent.
-	pub fn send_data<A>(&mut self, cx: CX![A, Wireguard], is_keepalive: bool) {
+	pub fn send_data<A: App>(&mut self, cx: &mut Core<A>, is_keepalive: bool) {
 		if !is_keepalive {
 			// Delete the keepalive timer, since data has now been sent.
 			cx.timer_del(self.keepalive);
@@ -62,7 +62,7 @@ impl Timers {
 	}
 
 	/// Call when a data packet is recieved.
-	pub fn recv_data<A>(&mut self, cx: CX![A, Wireguard], is_keepalive: bool) {
+	pub fn recv_data<A: App>(&mut self, cx: &mut Core<A>, is_keepalive: bool) {
 		// Cancel the timeout rekey timer, since a packet has been recieved
 		cx.timer_max_del(self.rekey);
 
@@ -75,7 +75,7 @@ impl Timers {
 	}
 
 	/// Call when an initiation packet is sent.
-	pub fn send_init<A>(&mut self, cx: CX![A, Wireguard]) {
+	pub fn send_init<A: App>(&mut self, cx: &mut Core<A>) {
 		if self.rekey_start.is_none() {
 			// Start the rekeying timer
 			self.rekey_start = cx.now().into();
@@ -86,7 +86,7 @@ impl Timers {
 	}
 
 	/// Call when a response packet is recieved.
-	pub fn recv_resp<A>(&mut self, cx: CX![A, Wireguard]) {
+	pub fn recv_resp<A: App>(&mut self, cx: &mut Core<A>) {
 		// Rekeying is over
 		self.rekey_start = None;
 		// Delete the rekey timer
@@ -96,26 +96,32 @@ impl Timers {
 	}
 
 	/// Call when a response packet is sent.
-	pub fn send_resp<A>(&mut self, _: CX![A, Wireguard]) {
+	pub fn send_resp<A>(&mut self, _: &mut Core<A>) {
 		// No-op
 	}
 
 	/// Defer sending a keepalive packet until `duration` elapses.
-	fn reset_keepalive<A>(&mut self, cx: CX![A, Wireguard], duration: Duration) {
+	fn reset_keepalive<A: App>(&mut self, cx: &mut Core<A>, duration: Duration) {
 		if self.keepalive == FixedTimerKey::default() {
 			debug!("Setting keepalive timeout for {:?}", duration);
 
-			let actor = cx.access_actor().clone();
 			let idx = self.idx;
 
-			self.keepalive = cx.after(duration, move |s| actor.apply(s, move |this, cx| this.send_keepalive(cx, idx)));
+			self.keepalive = cx.after(duration, move |s| {
+				let (app, cx) = s.split();
+				app.wireguard().send_keepalive(cx, idx);
+			});
 		}
 	}
 
 	/// Defer rekeying until `duration` elapses.
-	fn reset_rekey<A>(&mut self, cx: CX![A, Wireguard], duration: Duration) {
+	fn reset_rekey<A: App>(&mut self, cx: &mut Core<A>, duration: Duration) {
 		trace!("Setting rekey timeout for {:?}", duration);
-		timer_max!(&mut self.rekey, cx.now() + duration, [cx], rekey(self.idx));
+		let idx = self.idx;
+		timer_max!(&mut self.rekey, cx.now() + duration, [cx], |s: &mut Stakker<A>| {
+			let (app, cx) = s.split();
+			app.wireguard().rekey(cx, idx);
+		});
 	}
 
 	/// Return random jitter for timeouts. This should be applied to the next rekey timer each time it elapses.

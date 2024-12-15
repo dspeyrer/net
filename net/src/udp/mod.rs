@@ -54,11 +54,12 @@ impl<A: App + 'static> Socket<A> {
 		let src = self.port;
 
 		self.deferrer.defer(move |s| {
-			let this = s.app_mut().net();
+			let (this, cx) = s.split();
+			let this = this.net();
 
 			let mut csum = this.ip.pseudo_checksum(Udp, addr);
 
-			this.write(Udp, addr, tos, move |mut buf| {
+			this.write(cx, Udp, addr, tos, move |mut buf| {
 				{
 					let (header, buf): (&mut Header, _) = buf.fork().split();
 

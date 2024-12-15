@@ -4,7 +4,7 @@ use core::net::{Ipv4Addr, Ipv6Addr};
 use std::net::IpAddr;
 
 use collections::bytes::Slice;
-use stakker::{ActorOwn, Core, Fwd};
+use stakker::{Core, Fwd};
 use wireguard::Wireguard;
 
 extern crate alloc;
@@ -18,7 +18,7 @@ pub mod udp;
 pub use ip::SocketAddr;
 
 pub struct Interface<A: App + 'static> {
-	link: ActorOwn<Wireguard, A>,
+	link: Wireguard,
 
 	#[cfg(feature = "pcap")]
 	pcap: pcap::Writer,
@@ -33,14 +33,14 @@ pub struct Interface<A: App + 'static> {
 	dns: dns::Resolver<A>,
 }
 
-pub trait App: Sized {
+pub trait App: wireguard::App + Sized {
 	fn net(&mut self) -> &mut Interface<Self>;
 }
 
 impl<A: App> Interface<A> {
 	pub fn init(
 		cx: &mut Core<A>,
-		link: impl FnOnce(&mut stakker::Core<A>, Fwd<Slice>) -> ActorOwn<Wireguard, A>,
+		link: impl FnOnce(&mut stakker::Core<A>, Fwd<Slice>) -> Wireguard,
 		v4: Ipv4Addr,
 		v6: Ipv6Addr,
 		dns: IpAddr,
@@ -65,5 +65,9 @@ impl<A: App> Interface<A> {
 			udp,
 			tcp: tcp::Interface::default(),
 		}
+	}
+
+	pub fn wireguard(&mut self) -> &mut Wireguard {
+		&mut self.link
 	}
 }
