@@ -6,7 +6,7 @@ use bilge::prelude::*;
 use collections::bytes::Slice;
 use log::{info, warn};
 use rand::Rng;
-use stakker::{Core, FixedTimerKey, Ret};
+use stakker::{Core, FixedTimerKey};
 use utils::bytes::Cast;
 use utils::endian::{u16be, u32be, BigEndian};
 
@@ -20,7 +20,7 @@ const CLASS_IN: u16 = 1;
 
 struct Entry {
 	/// The callback for the resolved IP address
-	ret: Ret<Ipv4Addr>,
+	ret: Box<dyn FnOnce(Ipv4Addr)>,
 	/// The timer key of the retry callback for this request
 	retry: FixedTimerKey,
 	/// The DNS server that was queried
@@ -193,18 +193,18 @@ impl<A: App> Resolver<A> {
 		let Entry { ret, retry, .. } = entry.remove();
 
 		// Call the callback
-		ret.ret(*addr);
+		ret(*addr);
 		// Cancel the retry timer, since the request has been resolved
 		cx.timer_del(retry);
 	}
 }
 
 impl<A: App> Interface<A> {
-	pub fn resolve_v4(&mut self, cx: &mut Core<A>, name: impl Into<String>, ret: Ret<Ipv4Addr>) {
+	pub fn resolve_v4(&mut self, cx: &mut Core<A>, name: impl Into<String>, ret: Box<dyn FnOnce(Ipv4Addr)>) {
 		self.resolve_v4_with(cx, name, self.dns.primary, ret)
 	}
 
-	pub fn resolve_v4_with(&mut self, cx: &mut Core<A>, name: impl Into<String>, server: IpAddr, ret: Ret<Ipv4Addr>) {
+	pub fn resolve_v4_with(&mut self, cx: &mut Core<A>, name: impl Into<String>, server: IpAddr, ret: Box<dyn FnOnce(Ipv4Addr)>) {
 		let id = self.dns.gen_id();
 		let retry = self.dns.query(cx, id, server, name.into());
 		self.dns.in_flight.insert(id, Entry { ret, server, retry });
