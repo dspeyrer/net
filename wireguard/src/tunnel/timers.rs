@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use collections::map::Index;
 use log::{debug, info, trace};
 use rand::Rng;
-use stakker::{timer_max, Core, FixedTimerKey, MaxTimerKey, Stakker};
+use stakker::{Core, FixedTimerKey, MaxTimerKey, Stakker};
 
 use crate::App;
 
@@ -118,7 +118,7 @@ impl Timers {
 	fn reset_rekey<A: App>(&mut self, cx: &mut Core<A>, duration: Duration) {
 		trace!("Setting rekey timeout for {:?}", duration);
 		let idx = self.idx;
-		timer_max!(&mut self.rekey, cx.now() + duration, [cx], |s: &mut Stakker<A>| {
+		cx.timer_max(&mut self.rekey, cx.now() + duration, move |s: &mut Stakker<A>| {
 			let (app, cx) = s.split();
 			app.wireguard().rekey(cx, idx);
 		});

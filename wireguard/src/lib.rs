@@ -14,7 +14,7 @@ use collections::bytes::{Cursor, Slice};
 use collections::map::{Index, Map};
 use log::{error, info, warn};
 use runtime::Io;
-use stakker::{fwd, Core, Fwd};
+use stakker::{Core, Fwd};
 use tunnel::{Interface, Peer};
 use utils::bytes;
 use utils::error::*;
@@ -135,7 +135,7 @@ impl Wireguard {
 		if buf.is_empty() {
 			log::info!("Recieved keepalive");
 		} else {
-			fwd!([self.fwd], buf);
+			self.fwd.fwd(buf);
 		}
 
 		Ok(())
