@@ -8,23 +8,20 @@ use crate::GLOBAL;
 
 static EXIT: AtomicBool = AtomicBool::new(false);
 
-pub fn init<A>(f: impl FnOnce(&mut Core<A>) -> A) -> Stakker<A> {
+pub fn exec<A: 'static>(f: impl FnOnce(&mut Core<A>) -> A) -> Result {
 	// Set the global logger.
 	crate::log_init();
 	// Get both a monotonic and an absolute representation of the time.
 	let now = Instant::now();
 	let now_sys = SystemTime::now();
 	// Initialise Stakker with the monotonic time.
-	let mut s = Stakker::new(now, f);
+	let mut stakker = Stakker::new(now, f);
 	// Set the Stakker systime to the start time.
-	s.set_systime(Some(now_sys));
-	s
-}
+	stakker.set_systime(Some(now_sys));
 
-pub fn exec<A>(stakker: &mut Stakker<A>, exit_fn: impl FnOnce()) -> Result {
 	ctrlc::set_handler(|| EXIT.store(true, Ordering::Relaxed)).map_err(|err| log::error!("Error occurred while setting Ctrl+C handler: {err}"))?;
 
-	GLOBAL.with(|this| {
+	GLOBAL.with(move |this| {
 		let mut idle = false;
 
 		loop {
@@ -34,8 +31,6 @@ pub fn exec<A>(stakker: &mut Stakker<A>, exit_fn: impl FnOnce()) -> Result {
 
 			// Break out of the loop if an exit is requested.
 			if EXIT.load(Ordering::Relaxed) {
-				// Call the exit function, which should defer the cleanup of remaining objects.
-				exit_fn();
 				// Execute the deferral queue to cleanup the application state.
 				stakker.run(t, false);
 				// Log collected poll statistics.
