@@ -8,7 +8,6 @@ use std::time::Instant;
 
 use collections::bytes::{Cursor, Slice};
 use log::error;
-use stakker::Fwd;
 
 mod logger;
 mod rt;
@@ -230,7 +229,7 @@ impl State {
 }
 
 struct Entry {
-	fwd: Fwd<Slice>,
+	cb: Box<dyn FnMut(Slice)>,
 	queue: VecDeque<Box<[u8]>>,
 }
 
@@ -239,7 +238,7 @@ impl Entry {
 		let mut buf = Slice::new(1500);
 
 		while recv(fd, &mut buf)? {
-			self.fwd.fwd(buf);
+			(self.cb)(buf);
 			*ctr += 1;
 
 			buf = Slice::new(1500);
@@ -268,11 +267,11 @@ pub struct Io<T: AsRawFd> {
 }
 
 impl<T: AsRawFd> Io<T> {
-	pub fn new(inner: T, fwd: Fwd<Slice>) -> Self {
+	pub fn new(inner: T, cb: Box<dyn FnMut(Slice)>) -> Self {
 		State::with(|i| {
 			i.fds.push(Poll { fd: as_raw(&inner), events: POLLIN, revents: 0 });
 
-			i.entries.push(Entry { fwd, queue: VecDeque::new() });
+			i.entries.push(Entry { cb, queue: VecDeque::new() });
 
 			Self { inner }
 		})

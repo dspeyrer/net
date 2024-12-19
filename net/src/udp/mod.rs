@@ -4,7 +4,7 @@ use core::net::IpAddr;
 use collections::bytes::{Cursor, Slice};
 use collections::map::{self, Key, Map};
 use log::{debug, info, warn};
-use stakker::{Core, Deferrer, Fwd};
+use stakker::{Core, Deferrer};
 use utils::bytes::{self, Cast};
 use utils::endian::u16be;
 use utils::error::*;
@@ -30,7 +30,7 @@ pub struct Socket<A: App + 'static> {
 }
 
 impl<A: App + 'static> Socket<A> {
-	pub fn bind(deferrer: Deferrer<A>, port: u16, callback: Fwd<(SocketAddr, Slice)>) -> Self {
+	pub fn bind(deferrer: Deferrer<A>, port: u16, callback: Box<dyn FnMut(SocketAddr, Slice)>) -> Self {
 		deferrer.defer(move |s| {
 			let this = s.app_mut().net();
 
@@ -44,7 +44,7 @@ impl<A: App + 'static> Socket<A> {
 		Self { port, deferrer }
 	}
 
-	pub fn bind_eph(this: &mut super::Interface<A>, cx: &mut Core<A>, callback: Fwd<(SocketAddr, Slice)>) -> Self {
+	pub fn bind_eph(this: &mut super::Interface<A>, cx: &mut Core<A>, callback: Box<dyn FnMut(SocketAddr, Slice)>) -> Self {
 		this.udp.bind_eph(cx, callback)
 	}
 
@@ -101,7 +101,7 @@ pub struct Connected<A: App + 'static> {
 
 impl<A: App> Connected<A> {
 	pub fn bind(this: &mut super::Interface<A>, cx: &mut Core<A>, addr: SocketAddr, callback: impl Fn(Slice) + 'static) -> Self {
-		let callback = Fwd::new(move |(src, buf)| {
+		let callback = Box::new(move |src, buf| {
 			if src == addr {
 				// The packet source matches the bound address
 				callback(buf);
@@ -131,7 +131,7 @@ pub(crate) struct Interface {
 }
 
 impl Interface {
-	pub fn bind_eph<A: App>(&mut self, cx: &mut Core<A>, callback: Fwd<(SocketAddr, Slice)>) -> Socket<A> {
+	pub fn bind_eph<A: App>(&mut self, cx: &mut Core<A>, callback: Box<dyn FnMut(SocketAddr, Slice)>) -> Socket<A> {
 		// Note: if all ports in the ephemeral range are full, this will loop forever.
 		let entry = loop {
 			// Increment, wrapping to the ephemeral port starting index
@@ -149,7 +149,7 @@ impl Interface {
 		Socket { port: self.nxt, deferrer: cx.deferrer() }
 	}
 
-	pub fn recv<'a>(&'a self, interface: &ip::Interface, addr: IpAddr, buf: Slice) -> Result {
+	pub fn recv<'a>(&'a mut self, interface: &ip::Interface, addr: IpAddr, buf: Slice) -> Result {
 		let len: u32 = buf.len().try_into().map_err(|_| log::warn!("UDP packet too big ({} bytes)", buf.len()))?;
 
 		if buf.len() < size_of::<Header>() {
@@ -175,7 +175,7 @@ impl Interface {
 
 		let dst = header.dst.get();
 
-		let e = self.map.find(&dst).ok_or_else(|| debug!("Socket at port {dst} not found"))?;
+		let e = self.map.find_entry(&dst).filled().ok_or_else(|| debug!("Socket at port {dst} not found"))?.into_ref();
 
 		if header.len.get() as u32 != len {
 			log::warn!("UDP header length ({len}) does not match actual packet length ({})", len);
@@ -184,7 +184,7 @@ impl Interface {
 
 		let port = header.src.get();
 
-		e.callback.fwd((SocketAddr { addr, port }, buf));
+		(e.callback)(SocketAddr { addr, port }, buf);
 
 		Ok(())
 	}
@@ -198,7 +198,7 @@ impl Default for Interface {
 
 pub(crate) struct Entry {
 	port: u16,
-	callback: Fwd<(SocketAddr, Slice)>,
+	callback: Box<dyn FnMut(SocketAddr, Slice)>,
 }
 
 impl Key for Entry {

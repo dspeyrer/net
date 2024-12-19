@@ -14,7 +14,7 @@ use collections::bytes::{Cursor, Slice};
 use collections::map::{Index, Map};
 use log::{error, info, warn};
 use runtime::Io;
-use stakker::{Core, Fwd};
+use stakker::Core;
 use tunnel::{Interface, Peer};
 use utils::bytes;
 use utils::error::*;
@@ -41,11 +41,11 @@ macro_rules! validate_packet_size {
 pub struct Wireguard {
 	interface: Interface,
 	peers: Map<Peer, 1>,
-	fwd: Fwd<Slice>,
+	cb: Box<dyn FnMut(Slice)>,
 }
 
 impl Wireguard {
-	pub fn init<A: App>(cx: &mut Core<A>, addr: SocketAddr, s_priv: [u8; 32], p_pub: [u8; 32], q_pre: [u8; 32], fwd: Fwd<Slice>) -> Self {
+	pub fn init<A: App>(cx: &mut Core<A>, addr: SocketAddr, s_priv: [u8; 32], p_pub: [u8; 32], q_pre: [u8; 32], cb: Box<dyn FnMut(Slice)>) -> Self {
 		let socket: std::io::Result<UdpSocket> = try {
 			let socket = UdpSocket::bind::<SocketAddr>(match addr {
 				SocketAddr::V4(_) => SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into(),
@@ -61,7 +61,7 @@ impl Wireguard {
 		let socket = socket.expect("Failed to create socket");
 
 		let d = cx.deferrer();
-		let read_fwd = Fwd::new(move |buf| {
+		let read_fwd = Box::new(move |buf| {
 			d.defer(|s| {
 				let (app, cx) = s.split();
 				app.wireguard().read(cx, buf);
@@ -79,7 +79,7 @@ impl Wireguard {
 		let peer = Peer::init(&interface, slot.index(), p_pub, q_pre);
 		slot.insert(peer);
 
-		Self { peers, interface, fwd }
+		Self { peers, interface, cb }
 	}
 }
 
@@ -135,7 +135,7 @@ impl Wireguard {
 		if buf.is_empty() {
 			log::info!("Recieved keepalive");
 		} else {
-			self.fwd.fwd(buf);
+			(self.cb)(buf);
 		}
 
 		Ok(())

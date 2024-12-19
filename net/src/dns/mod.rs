@@ -6,7 +6,7 @@ use bilge::prelude::*;
 use collections::bytes::Slice;
 use log::{info, warn};
 use rand::Rng;
-use stakker::{Core, FixedTimerKey, Fwd, Ret};
+use stakker::{Core, FixedTimerKey, Ret};
 use utils::bytes::Cast;
 use utils::endian::{u16be, u32be, BigEndian};
 
@@ -41,7 +41,7 @@ impl<A: App> Resolver<A> {
 		let d = cx.deferrer();
 		let socket = udp.bind_eph(
 			cx,
-			Fwd::new(move |(addr, bytes)| {
+			Box::new(move |addr, bytes| {
 				d.defer(move |s| {
 					let (app, cx) = s.split();
 					app.net().dns.process(cx, addr, bytes)
