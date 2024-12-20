@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use collections::map::Index;
 use log::{debug, info, trace};
 use rand::Rng;
-use stakker::{Core, FixedTimerKey, MaxTimerKey, Stakker};
+use stakker::{Core, FixedTimerKey, MaxTimerKey};
 
 use crate::App;
 
@@ -107,10 +107,7 @@ impl Timers {
 
 			let idx = self.idx;
 
-			self.keepalive = cx.after(duration, move |s| {
-				let (app, cx) = s.split();
-				app.wireguard().send_keepalive(cx, idx);
-			});
+			self.keepalive = cx.after(duration, move |app, cx| app.wireguard().send_keepalive(cx, idx));
 		}
 	}
 
@@ -118,10 +115,7 @@ impl Timers {
 	fn reset_rekey<A: App>(&mut self, cx: &mut Core<A>, duration: Duration) {
 		trace!("Setting rekey timeout for {:?}", duration);
 		let idx = self.idx;
-		cx.timer_max(&mut self.rekey, cx.now() + duration, move |s: &mut Stakker<A>| {
-			let (app, cx) = s.split();
-			app.wireguard().rekey(cx, idx);
-		});
+		cx.timer_max(&mut self.rekey, cx.now() + duration, move |app, cx| app.wireguard().rekey(cx, idx));
 	}
 
 	/// Return random jitter for timeouts. This should be applied to the next rekey timer each time it elapses.

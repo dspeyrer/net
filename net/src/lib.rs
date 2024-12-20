@@ -48,7 +48,7 @@ impl<A: App> Interface<A> {
 		let mut udp = udp::Interface::default();
 
 		let d = cx.deferrer();
-		let write = Box::new(move |buf| d.defer(|s| s.app_mut().net().recv(buf)));
+		let write = Box::new(move |buf| d.defer(|app, _| app.net().recv(buf)));
 
 		Self {
 			link: link(cx, write),

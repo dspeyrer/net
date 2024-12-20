@@ -31,10 +31,8 @@ pub struct Socket<A: App + 'static> {
 
 impl<A: App + 'static> Socket<A> {
 	pub fn bind(deferrer: Deferrer<A>, port: u16, callback: Box<dyn FnMut(SocketAddr, Slice)>) -> Self {
-		deferrer.defer(move |s| {
-			let this = s.app_mut().net();
-
-			match this.udp.map.find_entry(&port) {
+		deferrer.defer(move |this, _| {
+			match this.net().udp.map.find_entry(&port) {
 				map::Entry::Empty(entry) => entry.insert(Entry { port, callback }),
 				// Instead of panicking, this should call an error handler.
 				_ => panic!("Address already in use"),
@@ -53,8 +51,7 @@ impl<A: App + 'static> Socket<A> {
 
 		let src = self.port;
 
-		self.deferrer.defer(move |s| {
-			let (this, cx) = s.split();
+		self.deferrer.defer(move |this, cx| {
 			let this = this.net();
 
 			let mut csum = this.ip.pseudo_checksum(Udp, addr);
@@ -88,8 +85,8 @@ impl<A: App + 'static> Drop for Socket<A> {
 	fn drop(&mut self) {
 		let port = self.port;
 
-		self.deferrer.defer(move |s| {
-			s.app_mut().net().udp.map.find_entry(&port).remove();
+		self.deferrer.defer(move |app, _| {
+			app.net().udp.map.find_entry(&port).remove();
 		});
 	}
 }
@@ -175,7 +172,12 @@ impl Interface {
 
 		let dst = header.dst.get();
 
-		let e = self.map.find_entry(&dst).filled().ok_or_else(|| debug!("Socket at port {dst} not found"))?.into_ref();
+		let e = self
+			.map
+			.find_entry(&dst)
+			.filled()
+			.ok_or_else(|| debug!("Socket at port {dst} not found"))?
+			.into_ref();
 
 		if header.len.get() as u32 != len {
 			log::warn!("UDP header length ({len}) does not match actual packet length ({})", len);

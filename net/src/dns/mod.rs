@@ -41,12 +41,7 @@ impl<A: App> Resolver<A> {
 		let d = cx.deferrer();
 		let socket = udp.bind_eph(
 			cx,
-			Box::new(move |addr, bytes| {
-				d.defer(move |s| {
-					let (app, cx) = s.split();
-					app.net().dns.process(cx, addr, bytes)
-				})
-			}),
+			Box::new(move |addr, bytes| d.defer(move |app, cx| app.net().dns.process(cx, addr, bytes))),
 		);
 
 		Self { socket, primary: addr, in_flight: HashMap::new() }
@@ -110,8 +105,7 @@ impl<A: App> Resolver<A> {
 			buf.push(&BigEndian::from(CLASS_IN));
 		});
 
-		cx.after(TIMEOUT, move |s| {
-			let (app, cx) = s.split();
+		cx.after(TIMEOUT, move |app, cx| {
 			let net = app.net();
 
 			warn!("DNS resolution for {name} timed out. Retrying...");

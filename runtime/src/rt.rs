@@ -61,7 +61,7 @@ pub fn exec<A: 'static>(f: impl FnOnce(&mut Core<A>) -> A) -> Result {
 				continue;
 			};
 
-			// Only process the idle queue if there are items in it, and if
+			// Only process the idle queue if there are items in it, and if no I/O occurred.
 			idle = idle_pending && !is_io;
 		}
 

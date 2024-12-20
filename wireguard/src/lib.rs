@@ -61,12 +61,7 @@ impl Wireguard {
 		let socket = socket.expect("Failed to create socket");
 
 		let d = cx.deferrer();
-		let read_fwd = Box::new(move |buf| {
-			d.defer(|s| {
-				let (app, cx) = s.split();
-				app.wireguard().read(cx, buf);
-			});
-		});
+		let read_fwd = Box::new(move |buf| d.defer(|app, cx| app.wireguard().read(cx, buf)));
 		let link = Io::new(socket, read_fwd);
 
 		let mut peers = Map::<_, 1>::default();
