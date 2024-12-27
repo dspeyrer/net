@@ -15,7 +15,7 @@ pub unsafe trait Cast {}
 
 /// Cast the current type as a reference to another type.
 #[inline]
-pub const fn cast<T: Cast, A: Cast + ?Sized>(a: &A) -> &T {
+pub fn cast<T: Cast, A: Cast + ?Sized>(a: &A) -> &T {
 	let ptr: *const T = a as *const A as *const T;
 	assert!(size_of::<T>() <= size_of_val(a) && ptr.is_aligned());
 	unsafe { &*ptr }
@@ -23,7 +23,7 @@ pub const fn cast<T: Cast, A: Cast + ?Sized>(a: &A) -> &T {
 
 /// Cast the current type as a slice of another type.
 #[inline]
-pub const fn as_slice<T: Cast, A: Cast + ?Sized>(a: &A) -> &[T] {
+pub fn as_slice<T: Cast, A: Cast + ?Sized>(a: &A) -> &[T] {
 	let ptr: *const T = a as *const A as *const T;
 	assert!(ptr.is_aligned());
 	unsafe { slice::from_raw_parts(ptr, size_of_val(a) / size_of::<T>()) }

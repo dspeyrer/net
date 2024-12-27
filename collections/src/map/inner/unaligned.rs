@@ -1,5 +1,4 @@
 use core::{mem::MaybeUninit, ptr};
-use std::intrinsics::unlikely;
 
 type Word = u64;
 
@@ -32,9 +31,15 @@ impl<const N: usize> Control<N> {
 	unsafe fn set(&mut self, n: usize, b: u8) {
 		*self.bytes.get_unchecked_mut(n) = b;
 
-		if unlikely(n < MIRROR) {
-			*self.wrap.get_unchecked_mut(n) = b;
+		if n < MIRROR {
+			self.set_wrap(n, b);
 		}
+	}
+
+	#[cold]
+	#[inline]
+	unsafe fn set_wrap(&mut self, n: usize, b: u8) {
+		*self.wrap.get_unchecked_mut(n) = b;
 	}
 }
 
