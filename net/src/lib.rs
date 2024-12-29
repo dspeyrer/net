@@ -18,7 +18,7 @@ pub mod udp;
 pub use ip::SocketAddr;
 
 pub struct Interface<A: 'static> {
-	link: Wireguard,
+	link: Wireguard<A>,
 
 	#[cfg(feature = "pcap")]
 	pcap: pcap::Writer,
@@ -43,7 +43,7 @@ pub trait App: wireguard::App + Sized {
 impl<A: App> Interface<A> {
 	pub fn init(
 		cx: &mut Core<A>,
-		link: impl FnOnce(&mut stakker::Core<A>, Box<dyn FnMut(Slice)>) -> Wireguard,
+		link: impl FnOnce(Box<dyn FnMut(Slice)>) -> Wireguard<A>,
 		v4: Ipv4Addr,
 		v6: Ipv6Addr,
 		dns: IpAddr,
@@ -52,7 +52,7 @@ impl<A: App> Interface<A> {
 		let write = Box::new(move |buf| d.defer(|app, cx| Self::recv(app, cx, buf)));
 
 		Self {
-			link: link(cx, write),
+			link: link(write),
 
 			#[cfg(feature = "pcap")]
 			pcap: pcap::Writer::new("./log.pcap").unwrap(),
@@ -67,7 +67,7 @@ impl<A: App> Interface<A> {
 		}
 	}
 
-	pub fn wireguard(&mut self) -> &mut Wireguard {
+	pub fn wireguard(&mut self) -> &mut Wireguard<A> {
 		&mut self.link
 	}
 }

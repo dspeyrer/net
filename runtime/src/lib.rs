@@ -1,6 +1,7 @@
 extern crate alloc;
 
 use alloc::collections::VecDeque;
+use stakker::Core;
 use core::time::Duration;
 use std::io::{self, ErrorKind};
 use std::time::Instant;
@@ -92,9 +93,9 @@ fn recv(fd: RawFd, buf: &mut Slice) -> Result<bool> {
 	}
 }
 
-pub struct State {
+pub struct State<A: 'static> {
 	fds: Vec<Poll>,
-	entries: Vec<Entry>,
+	entries: Vec<Entry<A>>,
 
 	/// The last poll call end timestamp
 	prev: Option<Instant>,
@@ -110,7 +111,7 @@ pub struct State {
 	tout: Duration,
 }
 
-impl State {
+impl<A: App + 'static> State<A> {
 	fn new() -> Self {
 		Self {
 			fds: Vec::new(),
@@ -136,30 +137,35 @@ impl State {
 	}
 
 	/// Poll the fds. Returns whether any file descriptors are ready for I/O.
-	fn poll(&mut self, timeout: Option<Duration>) -> Result<bool> {
+	fn poll(app: &mut A, cx: &mut Core<A>, timeout: Option<Duration>) -> Result<bool> {
 		let t = Instant::now();
+
+		let mut this = app.io();
 
 		let ret = unsafe {
 			poll(
-				self.fds.as_mut_ptr(),
-				self.fds.len().try_into().expect("Fewer than u32::MAX fds"),
+				this.fds.as_mut_ptr(),
+				this.fds.len().try_into().expect("Fewer than u32::MAX fds"),
 				as_timeout(timeout),
 			)
 		};
 
 		let e = Instant::now();
 
-		self.wait += e - t;
+		let mut read = this.read;
 
-		if let Some(prev) = self.prev.replace(e) {
-			self.tick += t - prev;
+		// Update statistics
+		this.wait += e - t;
+
+		if let Some(prev) = this.prev.replace(e) {
+			this.tick += t - prev;
 		}
 
 		if let Some(timeout) = timeout {
-			self.tout += timeout;
+			this.tout += timeout;
 		}
 
-		self.poll += 1;
+		this.poll += 1;
 
 		let mut pending: u32 = ret.try_into().map_err(|_| error!("poll() failed: {}", io::Error::last_os_error()))?;
 
@@ -168,32 +174,41 @@ impl State {
 		}
 
 		for idx in 0.. {
-			let Poll { fd, events, revents } = &mut self.fds[idx];
-			let entry = &mut self.entries[idx];
+			let &mut Poll { fd, revents, .. } = &mut this.fds[idx];
+			let mut entry = &mut this.entries[idx];
 
-			if *revents == 0 {
+			if revents == 0 {
 				continue;
 			}
 
-			if *revents & POLLERR != 0 {
+			if revents & POLLERR != 0 {
 				panic!("Socket error while polling");
 			}
 
-			if *revents & POLLHUP != 0 {
+			if revents & POLLHUP != 0 {
 				panic!("Socket hangup");
 			}
 
-			if *revents & POLLNVAL != 0 {
+			if revents & POLLNVAL != 0 {
 				panic!("Socket invalid");
 			}
 
-			if *revents & POLLIN != 0 {
-				entry.flush_read(*fd, &mut self.read)?;
+			if revents & POLLIN != 0 {
+				let mut cb = entry.cb.take().unwrap();
+
+				Entry::flush_read(&mut cb, app, cx, fd, &mut read)?;
+
+				this = app.io();
+				entry = &mut this.entries[idx];
+
+				entry.cb = Some(cb);
 			}
 
-			if *revents & POLLOUT != 0 {
-				entry.flush_write(*fd)?;
+			if revents & POLLOUT != 0 {
+				entry.flush_write(fd)?;
 			};
+
+			let Poll { events, revents, .. } = &mut this.fds[idx];
 
 			*events = POLLIN;
 
@@ -210,6 +225,8 @@ impl State {
 			}
 		}
 
+		this.read = read;
+
 		Ok(true)
 	}
 
@@ -221,17 +238,17 @@ impl State {
 	}
 }
 
-struct Entry {
-	cb: Box<dyn FnMut(Slice)>,
+struct Entry<A: 'static> {
+	cb: Option<Box<dyn FnMut(&mut A, &mut Core<A>, Slice)>>,
 	queue: VecDeque<Box<[u8]>>,
 }
 
-impl Entry {
-	fn flush_read(&mut self, fd: RawFd, ctr: &mut u64) -> Result {
+impl<A> Entry<A> {
+	fn flush_read(cb: &mut dyn FnMut(&mut A, &mut Core<A>, Slice), app: &mut A, cx: &mut Core<A>, fd: RawFd, ctr: &mut u64) -> Result {
 		let mut buf = Slice::new(1500);
 
 		while recv(fd, &mut buf)? {
-			(self.cb)(buf);
+			cb(app, cx, buf);
 			*ctr += 1;
 
 			buf = Slice::new(1500);
@@ -260,14 +277,14 @@ pub struct Io<T: AsRawFd> {
 }
 
 impl<T: AsRawFd> Io<T> {
-	pub fn new(state: &mut State, inner: T, cb: Box<dyn FnMut(Slice)>) -> Self {
+	pub fn new<A: App>(state: &mut State<A>, inner: T, cb: Box<dyn FnMut(&mut A, &mut Core<A>, Slice)>) -> Self {
 		state.fds.push(Poll { fd: as_raw(&inner), events: POLLIN, revents: 0 });
-		state.entries.push(Entry { cb, queue: VecDeque::new() });
+		state.entries.push(Entry { cb: Some(cb), queue: VecDeque::new() });
 
 		Self { inner }
 	}
 
-	pub fn write<X>(&self, state: &mut State, f: impl FnOnce(Cursor) -> X) -> Result<X> {
+	pub fn write<A: App, X>(&self, state: &mut State<A>, f: impl FnOnce(Cursor) -> X) -> Result<X> {
 		let mut vec = vec![0; 1500];
 		let res = Cursor::vec(&mut vec, f);
 
@@ -280,7 +297,7 @@ impl<T: AsRawFd> Io<T> {
 		Ok(res)
 	}
 
-	pub fn unbind(self, state: &mut State) {
+	pub fn unbind<A: App>(self, state: &mut State<A>) {
 		let idx = state.idx_of(&self.inner);
 		state.entries.swap_remove(idx);
 		state.fds.swap_remove(idx);

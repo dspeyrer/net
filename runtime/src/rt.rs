@@ -8,11 +8,11 @@ use crate::State;
 
 static EXIT: AtomicBool = AtomicBool::new(false);
 
-pub trait App {
-	fn io(&mut self) -> &mut State;
+pub trait App: Sized {
+	fn io(&mut self) -> &mut State<Self>;
 }
 
-pub fn exec<A: App + 'static>(f: impl FnOnce(&mut Core<A>, State) -> A) -> Result {
+pub fn exec<A: App + 'static>(f: impl FnOnce(&mut Core<A>, State<A>) -> A) -> Result {
 	// Set the global logger.
 	crate::log_init();
 	// Get both a monotonic and an absolute representation of the time.
@@ -39,7 +39,7 @@ pub fn exec<A: App + 'static>(f: impl FnOnce(&mut Core<A>, State) -> A) -> Resul
 			// Execute the deferral queue to cleanup the application state.
 			stakker.run(t, false);
 			// Log collected poll statistics.
-			stakker.app().io().log_stats();
+			stakker.split().0.io().log_stats();
 			// Exit.
 			break;
 		};
@@ -53,14 +53,16 @@ pub fn exec<A: App + 'static>(f: impl FnOnce(&mut Core<A>, State) -> A) -> Resul
 		};
 
 		// If there is no timeout and no more sockets to poll, there is no more work to do. Exit.
-		if timeout.is_none() && !stakker.app().io().is_io() {
+		if timeout.is_none() && !stakker.split().0.io().is_io() {
 			break;
 		}
 
 		log::trace!("idle_pending: {}, timeout: {:?}", idle_pending, timeout);
 
 		// Poll the file descriptors.
-		let Ok(is_io) = stakker.app().io().poll(timeout) else {
+		let (app, cx) = stakker.split();
+
+		let Ok(is_io) = State::poll(app, cx, timeout) else {
 			// If polling fails, run the exit processor on the next iteration of the loop.
 			EXIT.store(true, Ordering::Relaxed);
 			continue;

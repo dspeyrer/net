@@ -42,7 +42,7 @@ impl Interface {
 		Self { key, pubkey, hash, mac, link }
 	}
 
-	pub fn handle_initiation<A>(&mut self, cx: &mut Core<A>, io: &mut runtime::State, peers: &mut Map<Peer, 1>, msg: &mut Initiation) -> Result {
+	pub fn handle_initiation<A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State<A>, peers: &mut Map<Peer, 1>, msg: &mut Initiation) -> Result {
 		info!("Recieved initiation packet");
 
 		let idx = msg.idx;
@@ -95,7 +95,7 @@ impl Peer {
 		this
 	}
 
-	pub fn write<A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State, wg: &Interface, f: impl FnOnce(Cursor) + 'static, is_keepalive: bool) -> Result {
+	pub fn write<A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State<A>, wg: &Interface, f: impl FnOnce(Cursor) + 'static, is_keepalive: bool) -> Result {
 		let rekey = match &mut self.wheel.pair {
 			Some((_, ref mut tun)) if !tun.is_send_expired(cx) => {
 				let cx1 = &mut *cx;
@@ -121,7 +121,7 @@ impl Peer {
 		Ok(())
 	}
 
-	fn rekey<A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State, wg: &Interface) -> Result {
+	fn rekey<A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State<A>, wg: &Interface) -> Result {
 		if !self.timers.is_rekeying() {
 			// Only send an initiation packet if there is not one queued already.
 			self.create_initiation(cx, io, wg)
@@ -130,19 +130,19 @@ impl Peer {
 		}
 	}
 
-	pub fn create_initiation<A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State, wg: &Interface) -> Result {
+	pub fn create_initiation<A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State<A>, wg: &Interface) -> Result {
 		self.wheel.sent = Some(self.hs.create_initiation(cx, io, wg)?);
 		self.timers.send_init(cx);
 		Ok(())
 	}
 
-	pub fn create_response<A>(&mut self, cx: &mut Core<A>, io: &mut runtime::State, wg: &Interface, idx: u32, state: ResponderHandshake) -> Result {
+	pub fn create_response<A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State<A>, wg: &Interface, idx: u32, state: ResponderHandshake) -> Result {
 		self.wheel.next = Some((idx, self.hs.create_response(cx, io, wg, idx, state)?));
 		self.timers.send_resp(cx);
 		Ok(())
 	}
 
-	pub fn handle_response<A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State, i: &Interface, msg: &mut Response) -> Result {
+	pub fn handle_response<A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State<A>, i: &Interface, msg: &mut Response) -> Result {
 		info!("Recieved response packet for connection 0x{:x}", msg.rcv_idx);
 
 		let sent = self
@@ -165,7 +165,7 @@ impl Peer {
 		Ok(())
 	}
 
-	pub fn handle_data<'a, A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State, wg: &Interface, buf: &mut Slice) -> Result {
+	pub fn handle_data<'a, A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State<A>, wg: &Interface, buf: &mut Slice) -> Result {
 		let msg: &Data = buf.split();
 
 		match &mut self.wheel {
@@ -251,7 +251,7 @@ impl Noise {
 		Ok(())
 	}
 
-	fn create_initiation<A>(&mut self, cx: &mut Core<A>, io: &mut runtime::State, wg: &Interface) -> Result<SentHandshake> {
+	fn create_initiation<A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State<A>, wg: &Interface) -> Result<SentHandshake> {
 		wg.link.write(io, |mut buf| {
 			let msg: &mut Initiation = buf.fork().cast();
 			msg.tag = Tag::INITIATION;
@@ -268,7 +268,7 @@ impl Noise {
 		})
 	}
 
-	fn create_response<A>(&mut self, cx: &mut Core<A>, io: &mut runtime::State, wg: &Interface, rcv_idx: u32, state: ResponderHandshake) -> Result<Next> {
+	fn create_response<A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State<A>, wg: &Interface, rcv_idx: u32, state: ResponderHandshake) -> Result<Next> {
 		wg.link.write(io, |mut buf| {
 			let res: &mut Response = buf.fork().cast();
 			res.tag = Tag::RESPONSE;
