@@ -1,13 +1,12 @@
 extern crate alloc;
 
 use alloc::collections::VecDeque;
-use stakker::Core;
 use core::time::Duration;
 use std::io::{self, ErrorKind};
-use std::time::Instant;
 
 use collections::bytes::{Cursor, Slice};
 use log::error;
+use stakker::Core;
 
 mod logger;
 mod rt;
@@ -97,16 +96,14 @@ pub struct State<A: 'static> {
 	fds: Vec<Poll>,
 	entries: Vec<Entry<A>>,
 
-	/// The last poll call end timestamp
-	prev: Option<Instant>,
 	/// Total number of poll calls
 	poll: u64,
 	/// Total number of socket reads
 	read: u64,
 	/// Total poll wait time
 	wait: Duration,
-	/// Total Stakker run time
-	tick: Duration,
+	/// Total execution time
+	exec: Duration,
 	/// Total requested timeout duration
 	tout: Duration,
 }
@@ -117,12 +114,11 @@ impl<A: App + 'static> State<A> {
 			fds: Vec::new(),
 			entries: Vec::new(),
 
-			prev: None,
 			poll: 0,
 			read: 0,
 			wait: Duration::ZERO,
-			tick: Duration::ZERO,
-			tout: Duration::ZERO
+			exec: Duration::ZERO,
+			tout: Duration::ZERO,
 		}
 	}
 
@@ -136,61 +132,46 @@ impl<A: App + 'static> State<A> {
 		!self.fds.is_empty()
 	}
 
-	/// Poll the fds. Returns whether any file descriptors are ready for I/O.
-	fn poll(app: &mut A, cx: &mut Core<A>, timeout: Option<Duration>) -> Result<bool> {
-		let t = Instant::now();
+	/// Polls I/O, returning the number of file descriptors for which events have occurred.
+	fn poll(&mut self, timeout: Option<Duration>) -> Result<u32> {
+		self.poll += 1;
 
-		let mut this = app.io();
-
-		let ret = unsafe {
+		unsafe {
 			poll(
-				this.fds.as_mut_ptr(),
-				this.fds.len().try_into().expect("Fewer than u32::MAX fds"),
+				self.fds.as_mut_ptr(),
+				self.fds.len().try_into().expect("Fewer than u32::MAX fds"),
 				as_timeout(timeout),
 			)
-		};
-
-		let e = Instant::now();
-
-		let mut read = this.read;
-
-		// Update statistics
-		this.wait += e - t;
-
-		if let Some(prev) = this.prev.replace(e) {
-			this.tick += t - prev;
 		}
+		.try_into()
+		.map_err(|_| error!("poll() failed: {}", io::Error::last_os_error()))
+	}
 
-		if let Some(timeout) = timeout {
-			this.tout += timeout;
-		}
-
-		this.poll += 1;
-
-		let mut pending: u32 = ret.try_into().map_err(|_| error!("poll() failed: {}", io::Error::last_os_error()))?;
-
-		if pending == 0 {
-			return Ok(false);
-		}
+	/// Execute I/O callbacks, returning whether any I/O reads occurred.
+	fn execute(app: &mut A, cx: &mut Core<A>, mut pending: u32) -> Result<bool> {
+		let mut this = app.io();
+		let mut read = 0;
 
 		for idx in 0.. {
-			let &mut Poll { fd, revents, .. } = &mut this.fds[idx];
+			if pending == 0 {
+				break;
+			}
+
+			let &mut Poll { fd, revents, ref mut events } = &mut this.fds[idx];
 			let mut entry = &mut this.entries[idx];
 
 			if revents == 0 {
 				continue;
 			}
 
-			if revents & POLLERR != 0 {
-				panic!("Socket error while polling");
-			}
+			assert!(revents & POLLERR == 0, "socket error");
+			assert!(revents & POLLHUP == 0, "socket hangup");
+			assert!(revents & POLLNVAL == 0, "socket invalid");
 
-			if revents & POLLHUP != 0 {
-				panic!("Socket hangup");
-			}
-
-			if revents & POLLNVAL != 0 {
-				panic!("Socket invalid");
+			if revents & POLLOUT != 0 {
+				if entry.flush_write(fd)? {
+					*events = POLLIN;
+				}
 			}
 
 			if revents & POLLIN != 0 {
@@ -204,36 +185,22 @@ impl<A: App + 'static> State<A> {
 				entry.cb = Some(cb);
 			}
 
-			if revents & POLLOUT != 0 {
-				entry.flush_write(fd)?;
-			};
-
-			let Poll { events, revents, .. } = &mut this.fds[idx];
-
-			*events = POLLIN;
-
-			if !entry.queue.is_empty() {
-				*events |= POLLOUT;
-			}
-
-			*revents = 0;
+			this.fds[idx].revents = 0;
 
 			pending -= 1;
-
-			if pending == 0 {
-				break;
-			}
 		}
 
-		this.read = read;
+		this.read += read;
 
-		Ok(true)
+		Ok(read == 0)
 	}
+}
 
-	pub fn log_stats(&self) {
+impl<A> Drop for State<A> {
+	fn drop(&mut self) {
 		log::info!("Average socket reads per I/O poll: {:.2}", self.read as f64 / self.poll as f64);
 		log::info!("Average poll wait time: {:.2}us", self.wait.as_micros() as f64 / self.poll as f64);
-		log::info!("Average runtime tick time: {:.2}us", self.tick.as_micros() as f64 / self.poll as f64);
+		log::info!("Average runtime tick time: {:.2}us", self.exec.as_micros() as f64 / self.poll as f64);
 		log::info!("Average timeout: {:.2}us", self.tout.as_micros() as f64 / self.poll as f64);
 	}
 }
@@ -257,14 +224,14 @@ impl<A> Entry<A> {
 		Ok(())
 	}
 
-	fn flush_write(&mut self, fd: RawFd) -> Result {
+	fn flush_write(&mut self, fd: RawFd) -> Result<bool> {
 		assert!(!self.queue.is_empty());
 
 		loop {
-			let Some(buf) = self.queue.back_mut() else { return Ok(()) };
+			let Some(buf) = self.queue.back_mut() else { return Ok(true) };
 
 			if !send(fd, buf)? {
-				return Ok(());
+				return Ok(false);
 			}
 
 			self.queue.pop_back();
