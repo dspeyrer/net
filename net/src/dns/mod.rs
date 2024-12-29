@@ -98,13 +98,15 @@ impl<A: App + 'static> Resolver<A> {
 		});
 
 		cx.after(TIMEOUT, move |app, cx| {
+			let net = app.net();
+
 			warn!("DNS resolution for {name} timed out. Retrying...");
 
-			let server = app.net().dns.in_flight[&id].server;
+			let server = net.dns.in_flight[&id].server;
 			// Retry the query
-			let retry = Self::query(app.net(), cx, id, server, name);
+			let retry = Self::query(net, cx, id, server, name);
 			// Set the new retry timer key
-			app.net().dns.in_flight.get_mut(&id).unwrap().retry = retry;
+			net.dns.in_flight.get_mut(&id).unwrap().retry = retry;
 		})
 	}
 

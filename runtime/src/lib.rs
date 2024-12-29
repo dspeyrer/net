@@ -1,7 +1,6 @@
 extern crate alloc;
 
 use alloc::collections::VecDeque;
-use core::cell::RefCell;
 use core::time::Duration;
 use std::io::{self, ErrorKind};
 use std::time::Instant;
@@ -93,23 +92,7 @@ fn recv(fd: RawFd, buf: &mut Slice) -> Result<bool> {
 	}
 }
 
-thread_local! {
-	static GLOBAL: RefCell<State> = const {
-		RefCell::new(State {
-			fds: Vec::new(),
-			entries: Vec::new(),
-
-			prev: None,
-			poll: 0,
-			read: 0,
-			wait: Duration::ZERO,
-			tick: Duration::ZERO,
-			tout: Duration::ZERO
-		})
-	};
-}
-
-struct State {
+pub struct State {
 	fds: Vec<Poll>,
 	entries: Vec<Entry>,
 
@@ -128,8 +111,18 @@ struct State {
 }
 
 impl State {
-	fn with<X, F: FnOnce(&mut Self) -> X>(f: F) -> X {
-		GLOBAL.with(|x| f(&mut x.borrow_mut()))
+	fn new() -> Self {
+		Self {
+			fds: Vec::new(),
+			entries: Vec::new(),
+
+			prev: None,
+			poll: 0,
+			read: 0,
+			wait: Duration::ZERO,
+			tick: Duration::ZERO,
+			tout: Duration::ZERO
+		}
 	}
 
 	fn idx_of<T: AsRawFd>(&mut self, socket: &T) -> usize {
@@ -267,38 +260,29 @@ pub struct Io<T: AsRawFd> {
 }
 
 impl<T: AsRawFd> Io<T> {
-	pub fn new(inner: T, cb: Box<dyn FnMut(Slice)>) -> Self {
-		State::with(|i| {
-			i.fds.push(Poll { fd: as_raw(&inner), events: POLLIN, revents: 0 });
+	pub fn new(state: &mut State, inner: T, cb: Box<dyn FnMut(Slice)>) -> Self {
+		state.fds.push(Poll { fd: as_raw(&inner), events: POLLIN, revents: 0 });
+		state.entries.push(Entry { cb, queue: VecDeque::new() });
 
-			i.entries.push(Entry { cb, queue: VecDeque::new() });
-
-			Self { inner }
-		})
+		Self { inner }
 	}
 
-	pub fn write<X>(&self, f: impl FnOnce(Cursor) -> X) -> Result<X> {
+	pub fn write<X>(&self, state: &mut State, f: impl FnOnce(Cursor) -> X) -> Result<X> {
 		let mut vec = vec![0; 1500];
 		let res = Cursor::vec(&mut vec, f);
 
 		if !send(as_raw(&self.inner), &mut vec)? {
-			State::with(|i| {
-				let idx = i.idx_of(&self.inner);
-				i.entries[idx].queue.push_front(vec.into_boxed_slice());
-				i.fds[idx].events |= POLLOUT;
-			});
+			let idx = state.idx_of(&self.inner);
+			state.entries[idx].queue.push_front(vec.into_boxed_slice());
+			state.fds[idx].events |= POLLOUT;
 		}
 
 		Ok(res)
 	}
-}
 
-impl<T: AsRawFd> Drop for Io<T> {
-	fn drop(&mut self) {
-		State::with(|i| {
-			let idx = i.idx_of(&self.inner);
-			i.entries.swap_remove(idx);
-			i.fds.swap_remove(idx);
-		})
+	pub fn unbind(self, state: &mut State) {
+		let idx = state.idx_of(&self.inner);
+		state.entries.swap_remove(idx);
+		state.fds.swap_remove(idx);
 	}
 }

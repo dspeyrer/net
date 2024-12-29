@@ -107,7 +107,7 @@ impl Timers {
 
 			let idx = self.idx;
 
-			self.keepalive = cx.after(duration, move |app, cx| app.wireguard().send_keepalive(cx, idx));
+			self.keepalive = cx.after(duration, move |app, cx| app.wireguard().send_keepalive(cx, idx))
 		}
 	}
 
@@ -115,7 +115,9 @@ impl Timers {
 	fn reset_rekey<A: App>(&mut self, cx: &mut Core<A>, duration: Duration) {
 		trace!("Setting rekey timeout for {:?}", duration);
 		let idx = self.idx;
-		cx.timer_max(&mut self.rekey, cx.now() + duration, move |app, cx| app.wireguard().rekey(cx, idx));
+		cx.timer_max(&mut self.rekey, cx.now() + duration, move |app, cx| {
+			app.wireguard().rekey(cx, idx)
+		});
 	}
 
 	/// Return random jitter for timeouts. This should be applied to the next rekey timer each time it elapses.
