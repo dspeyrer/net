@@ -127,9 +127,9 @@ pub struct Store {
 	map: HashMap<Key, State>,
 }
 
-impl<A: App> crate::Interface<A> {
+impl crate::Interface {
 	/// Consume a packet fragment, passing completed packets to upper-layer protocols.
-	pub(super) fn handle_fragment(app: &mut A, cx: &mut Core<A>, key: Key, fragment: Fragment) -> Result {
+	pub(super) fn handle_fragment<A: App>(app: &mut A, cx: &mut Core<A>, key: Key, fragment: Fragment) -> Result {
 		match app.net().fragment.map.entry(key) {
 			Entry::Occupied(mut slot) => {
 				let state = slot.get_mut();

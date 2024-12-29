@@ -2,18 +2,15 @@ use core::mem::size_of;
 use core::net::IpAddr;
 
 use collections::bytes::{Cursor, Slice};
-use collections::map::{self, Key, Map};
-use log::{debug, info, warn};
-use stakker::{Core, Deferrer};
+use log::warn;
+use stakker::Core;
 use utils::bytes::{self, Cast};
 use utils::endian::u16be;
 use utils::error::*;
 
 use crate::ip::Protocol::Udp;
 use crate::ip::{self, SocketAddr, ToS};
-use crate::App;
-
-const EPHEMERAL: u16 = 49152;
+use crate::{App, Interface};
 
 #[derive(Cast)]
 #[repr(C)]
@@ -24,111 +21,8 @@ struct Header {
 	csum: [u8; 2],
 }
 
-pub struct Socket<A: App + 'static> {
-	port: u16,
-	deferrer: Deferrer<A>,
-}
-
-impl<A: App + 'static> Socket<A> {
-	pub fn bind(deferrer: Deferrer<A>, port: u16, callback: Box<dyn FnMut(SocketAddr, Slice)>) -> Self {
-		deferrer.defer(move |this, _| {
-			match this.net().udp.map.find_entry(&port) {
-				map::Entry::Empty(entry) => entry.insert(Entry { port, callback }),
-				// Instead of panicking, this should call an error handler.
-				_ => panic!("Address already in use"),
-			};
-		});
-
-		Self { port, deferrer }
-	}
-
-	pub fn bind_eph(this: &mut super::Interface<A>, cx: &mut Core<A>, callback: Box<dyn FnMut(SocketAddr, Slice)>) -> Self {
-		this.udp.bind_eph(cx, callback)
-	}
-
-	pub fn write(&self, SocketAddr { addr, port }: SocketAddr, f: impl FnOnce(Cursor) + 'static) {
-		let tos = ToS::new(ip::ECN::NotECT, ip::DiffServ::Default);
-
-		let src = self.port;
-
-		self.deferrer.defer(move |this, cx| {
-			let this = this.net();
-
-			let mut csum = this.ip.pseudo_checksum(Udp, addr);
-
-			this.write(cx, Udp, addr, tos, move |mut buf| {
-				{
-					let (header, buf): (&mut Header, _) = buf.fork().split();
-
-					header.src = src.into();
-					header.dst = port.into();
-					header.csum = [0, 0];
-
-					f(buf);
-				}
-
-				let pivot = buf.pivot();
-
-				let len: u16 = pivot.try_into().unwrap_or(0);
-				bytes::cast_mut::<Header, _>(&mut *buf).len = len.into();
-
-				csum.push(&len.to_be_bytes());
-				csum.push(&buf[..pivot]);
-
-				bytes::cast_mut::<Header, _>(&mut *buf).csum = csum.end();
-			});
-		});
-	}
-}
-
-impl<A: App + 'static> Drop for Socket<A> {
-	fn drop(&mut self) {
-		let port = self.port;
-
-		self.deferrer.defer(move |app, _| {
-			app.net().udp.map.find_entry(&port).remove();
-		});
-	}
-}
-
-pub struct Connected<A: App + 'static> {
-	inner: Socket<A>,
-	addr: SocketAddr,
-}
-
-impl<A: App> Connected<A> {
-	pub fn bind(this: &mut super::Interface<A>, cx: &mut Core<A>, addr: SocketAddr, callback: impl Fn(Slice) + 'static) -> Self {
-		let callback = Box::new(move |src, buf| {
-			if src == addr {
-				// The packet source matches the bound address
-				callback(buf);
-			} else {
-				info!("Recieved unexpected packet from {}", src);
-			}
-		});
-
-		let inner = Socket::bind_eph(this, cx, callback);
-
-		Connected { inner, addr }
-	}
-
-	pub fn addr(&self) -> &SocketAddr {
-		&self.addr
-	}
-
-	pub fn write(&self, f: impl FnOnce(Cursor) + 'static) {
-		self.inner.write(self.addr, f);
-	}
-}
-
-pub(crate) struct Interface {
-	/// The port number of the last created ephemeral socket
-	nxt: u16,
-	map: Map<Entry, 1024>,
-}
-
-impl<A: App> crate::Interface<A> {
-	pub fn recv_udp(app: &mut A, cx: &mut Core<A>, addr: IpAddr, buf: Slice) -> Result {
+impl Interface {
+	pub fn recv_udp<A: App>(app: &mut A, cx: &mut Core<A>, addr: IpAddr, buf: Slice) -> Result {
 		let this = app.net();
 
 		let len: u32 = buf.len().try_into().map_err(|_| log::warn!("UDP packet too big ({} bytes)", buf.len()))?;
@@ -154,64 +48,46 @@ impl<A: App> crate::Interface<A> {
 
 		let header: &Header = buf.split();
 
-		let dst = header.dst.get();
-
 		if header.len.get() as u32 != len {
 			log::warn!("UDP header length ({len}) does not match actual packet length ({})", len);
 			return Err(());
 		}
 
-		let e = this
-			.udp
-			.map
-			.find_entry(&dst)
-			.filled()
-			.ok_or_else(|| debug!("Socket at port {dst} not found"))?
-			.into_ref();
+		let src = SocketAddr { addr, port: header.src.get() };
 
-		let port = header.src.get();
-
-		(e.callback)(SocketAddr { addr, port }, buf);
+		match header.dst.get() {
+			n if n == app.dns_port() => app.net().dns.process(cx, src, buf),
+			n => app.on_udp(cx, n, src, buf),
+		}
 
 		Ok(())
 	}
-}
 
-impl Interface {
-	pub fn bind_eph<A: App>(&mut self, cx: &mut Core<A>, callback: Box<dyn FnMut(SocketAddr, Slice)>) -> Socket<A> {
-		// Note: if all ports in the ephemeral range are full, this will loop forever.
-		let entry = loop {
-			// Increment, wrapping to the ephemeral port starting index
-			self.nxt = self.nxt.checked_add(1).unwrap_or(EPHEMERAL);
+	pub fn write_udp<A: App>(&mut self, cx: &mut Core<A>, src: u16, SocketAddr { addr, port }: SocketAddr, f: impl FnOnce(Cursor) + 'static) {
+		let tos = ToS::new(ip::ECN::NotECT, ip::DiffServ::Default);
 
-			match self.map.find_entry(&self.nxt) {
-				map::Entry::Empty(entry) => break entry,
-				// If the port is already taken, continue
-				_ => {}
+		let mut csum = self.ip.pseudo_checksum(Udp, addr);
+
+		self.write(cx, Udp, addr, tos, move |mut buf| {
+			{
+				let (header, buf): (&mut Header, _) = buf.fork().split();
+
+				header.src = src.into();
+				header.dst = port.into();
+				header.csum = [0, 0];
+
+				f(buf);
 			}
-		};
 
-		entry.insert(Entry { port: self.nxt, callback });
+			let pivot = buf.pivot();
 
-		Socket { port: self.nxt, deferrer: cx.deferrer() }
-	}
-}
+			let len: u16 = pivot.try_into().unwrap_or(0);
+			bytes::cast_mut::<Header, _>(&mut *buf).len = len.into();
 
-impl Default for Interface {
-	fn default() -> Self {
-		Self { nxt: EPHEMERAL, map: Default::default() }
-	}
-}
+			csum.push(&len.to_be_bytes());
+			csum.push(&buf[..pivot]);
 
-pub(crate) struct Entry {
-	port: u16,
-	callback: Box<dyn FnMut(SocketAddr, Slice)>,
-}
-
-impl Key for Entry {
-	type Type = u16;
-
-	fn key(&self) -> &Self::Type {
-		&self.port
+			bytes::cast_mut::<Header, _>(&mut *buf).csum = csum.end();
+		});
 	}
 }

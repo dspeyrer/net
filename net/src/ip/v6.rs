@@ -33,8 +33,8 @@ struct Header {
 	dst: Ipv6Addr,
 }
 
-impl<A: App> crate::Interface<A> {
-	pub fn recv_v6(app: &mut A, cx: &mut Core<A>, buf: Slice) -> Result {
+impl crate::Interface {
+	pub fn recv_v6<A: App>(app: &mut A, cx: &mut Core<A>, buf: Slice) -> Result {
 		let header: &Header = buf.split();
 
 		let ip = app.net().ip.v6;

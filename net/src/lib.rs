@@ -17,7 +17,7 @@ pub mod udp;
 
 pub use ip::SocketAddr;
 
-pub struct Interface<A: App + 'static> {
+pub struct Interface {
 	link: Wireguard,
 
 	#[cfg(feature = "pcap")]
@@ -27,32 +27,27 @@ pub struct Interface<A: App + 'static> {
 
 	fragment: ip::fragment::Store,
 
-	udp: udp::Interface,
 	tcp: tcp::Interface,
-
-	dns: dns::Resolver<A>,
+	dns: dns::Resolver,
 }
 
 pub trait App: wireguard::App + Sized {
-	/// The port for DNS to listen on. Defaults to 1024.
-	const DNS_PORT: u16 = 1024;
+	fn dns_port(&self) -> u16;
 
 	/// The UDP read callback.
 	fn on_udp(&mut self, cx: &mut Core<Self>, port: u16, src: SocketAddr, buf: Slice);
 
-	fn net(&mut self) -> &mut Interface<Self>;
+	fn net(&mut self) -> &mut Interface;
 }
 
-impl<A: App> Interface<A> {
-	pub fn init(
+impl Interface {
+	pub fn init<A: App>(
 		cx: &mut Core<A>,
 		link: impl FnOnce(&mut stakker::Core<A>, Box<dyn FnMut(Slice)>) -> Wireguard,
 		v4: Ipv4Addr,
 		v6: Ipv6Addr,
 		dns: IpAddr,
 	) -> Self {
-		let mut udp = udp::Interface::default();
-
 		let d = cx.deferrer();
 		let write = Box::new(move |buf| d.defer(|app, cx| Self::recv(app, cx, buf)));
 
@@ -66,9 +61,8 @@ impl<A: App> Interface<A> {
 
 			fragment: ip::fragment::Store::default(),
 
-			dns: dns::Resolver::init(cx, &mut udp, dns),
+			dns: dns::Resolver::init(dns),
 
-			udp,
 			tcp: tcp::Interface::default(),
 		}
 	}

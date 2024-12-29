@@ -50,8 +50,8 @@ impl Interface {
 	}
 }
 
-impl<A: App> crate::Interface<A> {
-	pub(crate) fn recv(app: &mut A, cx: &mut Core<A>, buf: Slice) {
+impl crate::Interface {
+	pub(crate) fn recv<A: App>(app: &mut A, cx: &mut Core<A>, buf: Slice) {
 		#[cfg(feature = "pcap")]
 		let _ = app.net().pcap.log(&buf);
 
@@ -64,7 +64,7 @@ impl<A: App> crate::Interface<A> {
 		};
 	}
 
-	pub(crate) fn write(&mut self, cx: &mut Core<A>, protocol: Protocol, addr: IpAddr, tos: ToS, f: impl FnOnce(Cursor) + 'static) {
+	pub(crate) fn write<A: App>(&mut self, cx: &mut Core<A>, protocol: Protocol, addr: IpAddr, tos: ToS, f: impl FnOnce(Cursor) + 'static) {
 		let ip = self.ip;
 		#[cfg(feature = "pcap")]
 		let pcap = self.pcap.clone();
@@ -80,7 +80,7 @@ impl<A: App> crate::Interface<A> {
 		});
 	}
 
-	pub(crate) fn handle(app: &mut A, cx: &mut Core<A>, proto: Protocol, addr: IpAddr, buf: Slice) -> Result {
+	pub(crate) fn handle<A: App>(app: &mut A, cx: &mut Core<A>, proto: Protocol, addr: IpAddr, buf: Slice) -> Result {
 		match proto {
 			Protocol::Udp => Self::recv_udp(app, cx, addr, buf),
 			Protocol::Tcp => Self::recv_tcp(app, cx, addr, buf),

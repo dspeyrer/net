@@ -11,7 +11,7 @@ use utils::bytes::Cast;
 use utils::endian::{u16be, u32be, BigEndian};
 
 use crate::ip::SocketAddr;
-use crate::{udp, App, Interface};
+use crate::{App, Interface};
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -27,24 +27,16 @@ struct Entry {
 	server: IpAddr,
 }
 
-pub struct Resolver<A: App + 'static> {
-	/// The UDP socket for DNS
-	socket: udp::Socket<A>,
+pub struct Resolver {
 	/// The address of the primary DNS server
 	primary: IpAddr,
 	/// In-flight DNS requests and their corresponding callbacks
 	in_flight: HashMap<u16, Entry>,
 }
 
-impl<A: App> Resolver<A> {
-	pub fn init(cx: &mut Core<A>, udp: &mut udp::Interface, addr: IpAddr) -> Self {
-		let d = cx.deferrer();
-		let socket = udp.bind_eph(
-			cx,
-			Box::new(move |addr, bytes| d.defer(move |app, cx| app.net().dns.process(cx, addr, bytes))),
-		);
-
-		Self { socket, primary: addr, in_flight: HashMap::new() }
+impl Resolver {
+	pub fn init(primary: IpAddr) -> Self {
+		Self { primary, in_flight: HashMap::new() }
 	}
 
 	fn gen_id(&mut self) -> u16 {
@@ -58,13 +50,15 @@ impl<A: App> Resolver<A> {
 		id
 	}
 
-	fn query(&mut self, cx: &mut Core<A>, id: u16, server: IpAddr, name: String) -> FixedTimerKey {
+	fn query<A: App>(app: &mut A, cx: &mut Core<A>, id: u16, server: IpAddr, name: String) -> FixedTimerKey {
 		info!("Querying DNS server {} for {} (0x{:x})", server, name, id);
 
 		let n = name.clone();
 
+		let src = app.dns_port();
+
 		// Query port 53 of the server
-		self.socket.write(SocketAddr { addr: server, port: 53 }, move |buf| {
+		app.net().write_udp(cx, src, SocketAddr { addr: server, port: 53 }, move |buf| {
 			let (header, mut buf): (&mut Header, _) = buf.split();
 
 			// ID from parameters so that it can be duplicated between requests
@@ -106,20 +100,17 @@ impl<A: App> Resolver<A> {
 		});
 
 		cx.after(TIMEOUT, move |app, cx| {
-			let net = app.net();
-
 			warn!("DNS resolution for {name} timed out. Retrying...");
 
-			let server = net.dns.in_flight[&id].server;
-
+			let server = app.net().dns.in_flight[&id].server;
 			// Retry the query
-			let retry = net.dns.query(cx, id, server, name);
+			let retry = Self::query(app, cx, id, server, name);
 			// Set the new retry timer key
-			net.dns.in_flight.get_mut(&id).unwrap().retry = retry;
+			app.net().dns.in_flight.get_mut(&id).unwrap().retry = retry;
 		})
 	}
 
-	fn process(&mut self, cx: &mut Core<A>, src: SocketAddr, buf: Slice) {
+	pub(crate) fn process<A: App>(&mut self, cx: &mut Core<A>, src: SocketAddr, buf: Slice) {
 		let header: &Header = buf.split();
 
 		info!("Recieved DNS response for 0x{:x}", header.id);
@@ -193,15 +184,16 @@ impl<A: App> Resolver<A> {
 	}
 }
 
-impl<A: App> Interface<A> {
-	pub fn resolve_v4(&mut self, cx: &mut Core<A>, name: impl Into<String>, ret: Box<dyn FnOnce(Ipv4Addr)>) {
-		self.resolve_v4_with(cx, name, self.dns.primary, ret)
+impl Interface {
+	pub fn resolve_v4<A: App>(app: &mut A, cx: &mut Core<A>, name: impl Into<String>, ret: Box<dyn FnOnce(Ipv4Addr)>) {
+		let primary = app.net().dns.primary;
+		Self::resolve_v4_with(app, cx, name, primary, ret)
 	}
 
-	pub fn resolve_v4_with(&mut self, cx: &mut Core<A>, name: impl Into<String>, server: IpAddr, ret: Box<dyn FnOnce(Ipv4Addr)>) {
-		let id = self.dns.gen_id();
-		let retry = self.dns.query(cx, id, server, name.into());
-		self.dns.in_flight.insert(id, Entry { ret, server, retry });
+	pub fn resolve_v4_with<A: App>(app: &mut A, cx: &mut Core<A>, name: impl Into<String>, server: IpAddr, ret: Box<dyn FnOnce(Ipv4Addr)>) {
+		let id = app.net().dns.gen_id();
+		let retry = Resolver::query(app, cx, id, server, name.into());
+		app.net().dns.in_flight.insert(id, Entry { ret, server, retry });
 	}
 }
 
