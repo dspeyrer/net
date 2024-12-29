@@ -4,6 +4,7 @@ use core::net::{IpAddr, Ipv6Addr};
 use bilge::prelude::*;
 use collections::bytes::{Cursor, Slice};
 use log::warn;
+use stakker::Core;
 use utils::bytes::Cast;
 use utils::endian::{u16be, BigEndian};
 use utils::error::*;
@@ -32,12 +33,14 @@ struct Header {
 	dst: Ipv6Addr,
 }
 
-impl Interface {
-	pub fn recv_v6<A: App>(self, interface: &mut crate::Interface<A>, buf: Slice) -> Result {
+impl<A: App> crate::Interface<A> {
+	pub fn recv_v6(app: &mut A, cx: &mut Core<A>, buf: Slice) -> Result {
 		let header: &Header = buf.split();
 
-		if header.dst != self.v6 {
-			warn!("Found IP packet with destination {}, expected {}", header.dst, self.v6);
+		let ip = app.net().ip.v6;
+
+		if header.dst != ip {
+			warn!("Found IP packet with destination {}, expected {}", header.dst, ip);
 			return Err(());
 		}
 
@@ -53,9 +56,11 @@ impl Interface {
 		let proto = header.nxt.get();
 		let src = IpAddr::V6(header.src);
 
-		interface.handle(proto, src, buf)
+		Self::handle(app, cx, proto, src, buf)
 	}
+}
 
+impl Interface {
 	pub fn write_v6(&self, buf: Cursor, protocol: Protocol, addr: Ipv6Addr, tos: ToS, f: impl FnOnce(Cursor)) {
 		let (header, mut buf): (&mut Header, _) = buf.split();
 

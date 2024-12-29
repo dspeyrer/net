@@ -5,6 +5,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
 use collections::bytes::Slice;
+use stakker::Core;
 use utils::error::*;
 
 use crate::App;
@@ -128,8 +129,8 @@ pub struct Store {
 
 impl<A: App> crate::Interface<A> {
 	/// Consume a packet fragment, passing completed packets to upper-layer protocols.
-	pub(super) fn handle_fragment(&mut self, key: Key, fragment: Fragment) -> Result {
-		match self.fragment.map.entry(key) {
+	pub(super) fn handle_fragment(app: &mut A, cx: &mut Core<A>, key: Key, fragment: Fragment) -> Result {
+		match app.net().fragment.map.entry(key) {
 			Entry::Occupied(mut slot) => {
 				let state = slot.get_mut();
 
@@ -137,7 +138,7 @@ impl<A: App> crate::Interface<A> {
 
 				if let Some(buf) = state.assemble() {
 					slot.remove();
-					return self.handle(key.proto, key.addr, buf);
+					return Self::handle(app, cx, key.proto, key.addr, buf);
 				}
 			}
 			// If there are no fragments associated with the key yet, then insert a new slot.

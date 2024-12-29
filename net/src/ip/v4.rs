@@ -4,6 +4,7 @@ use core::net::{IpAddr, Ipv4Addr};
 use bilge::prelude::*;
 use collections::bytes::{Cursor, Slice};
 use log::warn;
+use stakker::Core;
 use utils::bytes::{self, Cast};
 use utils::endian::{u16be, BigEndian};
 use utils::error::*;
@@ -45,12 +46,14 @@ pub(super) struct Header {
 	dst: Ipv4Addr,
 }
 
-impl Interface {
-	pub fn recv_v4<A: App>(self, interface: &mut crate::Interface<A>, buf: Slice) -> Result {
+impl<A: App> crate::Interface<A> {
+	pub fn recv_v4(app: &mut A, cx: &mut Core<A>, buf: Slice) -> Result {
 		let header: &Header = buf.split();
 
-		if header.dst != self.v4 {
-			warn!("Found IP packet with destination {}, expected {}", header.dst, self.v4);
+		let ip = app.net().ip.v4;
+
+		if header.dst != ip {
+			warn!("Found IP packet with destination {}, expected {}", header.dst, ip);
 			return Err(());
 		}
 
@@ -91,17 +94,19 @@ impl Interface {
 
 		if start == 0 && !more {
 			// Process the packet regularly if it is not fragmented
-			interface.handle(proto, src, buf)
+			Self::handle(app, cx, proto, src, buf)
 		} else {
 			// Construct a fragmentation key and fragment.
 			let key = fragment::Key { ident: frag.idnt() as u32, proto, addr: src };
 			let fragment = fragment::Fragment { start, more, buf };
 
 			// Process them with the fragmentation handler
-			interface.handle_fragment(key, fragment)
+			Self::handle_fragment(app, cx, key, fragment)
 		}
 	}
+}
 
+impl Interface {
 	pub fn write_v4(&self, buf: Cursor, protocol: Protocol, addr: Ipv4Addr, tos: ToS, f: impl FnOnce(Cursor)) {
 		let (header, mut buf): (&mut Header, _) = buf.split();
 

@@ -51,15 +51,15 @@ impl Interface {
 }
 
 impl<A: App> crate::Interface<A> {
-	pub(crate) fn recv(&mut self, buf: Slice) {
+	pub(crate) fn recv(app: &mut A, cx: &mut Core<A>, buf: Slice) {
 		#[cfg(feature = "pcap")]
-		let _ = self.pcap.log(&buf);
+		let _ = app.net().pcap.log(&buf);
 
 		let ver = bytes::cast::<Prefix, _>(&*buf).ver();
 
 		let _ = match ver {
-			Version::V4 => self.ip.recv_v4(self, buf),
-			Version::V6 => self.ip.recv_v6(self, buf),
+			Version::V4 => Self::recv_v4(app, cx, buf),
+			Version::V6 => Self::recv_v6(app, cx, buf),
 			Version::Unknown => return warn!("Invalid IP packet version"),
 		};
 	}
@@ -80,10 +80,10 @@ impl<A: App> crate::Interface<A> {
 		});
 	}
 
-	pub(crate) fn handle<'a>(&'a mut self, proto: Protocol, addr: IpAddr, buf: Slice) -> Result {
+	pub(crate) fn handle(app: &mut A, cx: &mut Core<A>, proto: Protocol, addr: IpAddr, buf: Slice) -> Result {
 		match proto {
-			Protocol::Udp => self.udp.recv(&self.ip, addr, buf),
-			Protocol::Tcp => self.tcp.recv(&self.ip, addr, buf),
+			Protocol::Udp => Self::recv_udp(app, cx, addr, buf),
+			Protocol::Tcp => Self::recv_tcp(app, cx, addr, buf),
 			Protocol::Unknown => Err(log::debug!("Unimplemented IP protocol")),
 		}
 	}

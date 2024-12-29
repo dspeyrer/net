@@ -34,6 +34,12 @@ pub struct Interface<A: App + 'static> {
 }
 
 pub trait App: wireguard::App + Sized {
+	/// The port for DNS to listen on. Defaults to 1024.
+	const DNS_PORT: u16 = 1024;
+
+	/// The UDP read callback.
+	fn on_udp(&mut self, cx: &mut Core<Self>, port: u16, src: SocketAddr, buf: Slice);
+
 	fn net(&mut self) -> &mut Interface<Self>;
 }
 
@@ -48,7 +54,7 @@ impl<A: App> Interface<A> {
 		let mut udp = udp::Interface::default();
 
 		let d = cx.deferrer();
-		let write = Box::new(move |buf| d.defer(|app, _| app.net().recv(buf)));
+		let write = Box::new(move |buf| d.defer(|app, cx| Self::recv(app, cx, buf)));
 
 		Self {
 			link: link(cx, write),

@@ -127,6 +127,56 @@ pub(crate) struct Interface {
 	map: Map<Entry, 1024>,
 }
 
+impl<A: App> crate::Interface<A> {
+	pub fn recv_udp(app: &mut A, cx: &mut Core<A>, addr: IpAddr, buf: Slice) -> Result {
+		let this = app.net();
+
+		let len: u32 = buf.len().try_into().map_err(|_| log::warn!("UDP packet too big ({} bytes)", buf.len()))?;
+
+		if buf.len() < size_of::<Header>() {
+			log::warn!("UDP header too short (got {} bytes)", buf.len());
+			return Err(());
+		}
+
+		if addr.is_ipv6() || bytes::cast::<Header, _>(&*buf).csum != [0, 0] {
+			let mut csum = this.ip.pseudo_checksum(Udp, addr);
+
+			csum.push(&len.to_be_bytes());
+			csum.push(&buf);
+
+			let v = csum.end();
+
+			if v != [0, 0] {
+				warn!("Packet with invalid UDP checksum");
+				return Err(());
+			}
+		}
+
+		let header: &Header = buf.split();
+
+		let dst = header.dst.get();
+
+		if header.len.get() as u32 != len {
+			log::warn!("UDP header length ({len}) does not match actual packet length ({})", len);
+			return Err(());
+		}
+
+		let e = this
+			.udp
+			.map
+			.find_entry(&dst)
+			.filled()
+			.ok_or_else(|| debug!("Socket at port {dst} not found"))?
+			.into_ref();
+
+		let port = header.src.get();
+
+		(e.callback)(SocketAddr { addr, port }, buf);
+
+		Ok(())
+	}
+}
+
 impl Interface {
 	pub fn bind_eph<A: App>(&mut self, cx: &mut Core<A>, callback: Box<dyn FnMut(SocketAddr, Slice)>) -> Socket<A> {
 		// Note: if all ports in the ephemeral range are full, this will loop forever.
@@ -144,51 +194,6 @@ impl Interface {
 		entry.insert(Entry { port: self.nxt, callback });
 
 		Socket { port: self.nxt, deferrer: cx.deferrer() }
-	}
-
-	pub fn recv<'a>(&'a mut self, interface: &ip::Interface, addr: IpAddr, buf: Slice) -> Result {
-		let len: u32 = buf.len().try_into().map_err(|_| log::warn!("UDP packet too big ({} bytes)", buf.len()))?;
-
-		if buf.len() < size_of::<Header>() {
-			log::warn!("UDP header too short (got {} bytes)", buf.len());
-			return Err(());
-		}
-
-		if addr.is_ipv6() || bytes::cast::<Header, _>(&*buf).csum != [0, 0] {
-			let mut csum = interface.pseudo_checksum(Udp, addr);
-
-			csum.push(&len.to_be_bytes());
-			csum.push(&buf);
-
-			let v = csum.end();
-
-			if v != [0, 0] {
-				warn!("Packet with invalid UDP checksum");
-				return Err(());
-			}
-		}
-
-		let header: &Header = buf.split();
-
-		let dst = header.dst.get();
-
-		let e = self
-			.map
-			.find_entry(&dst)
-			.filled()
-			.ok_or_else(|| debug!("Socket at port {dst} not found"))?
-			.into_ref();
-
-		if header.len.get() as u32 != len {
-			log::warn!("UDP header length ({len}) does not match actual packet length ({})", len);
-			return Err(());
-		}
-
-		let port = header.src.get();
-
-		(e.callback)(SocketAddr { addr, port }, buf);
-
-		Ok(())
 	}
 }
 

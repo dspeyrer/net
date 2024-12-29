@@ -4,11 +4,13 @@ use std::ptr::NonNull;
 
 use bilge::prelude::*;
 use collections::bytes::Slice;
+use stakker::Core;
 use utils::bytes::Cast;
 use utils::endian::{u16be, u32be, u64be, BigEndian};
 use utils::error::*;
 
-use crate::ip::{self, SocketAddr};
+use crate::ip::SocketAddr;
+use crate::App;
 
 #[bitsize(16)]
 struct Control {
@@ -168,8 +170,8 @@ pub(crate) struct Interface {
 	map: HashMap<Key, TCB>,
 }
 
-impl Interface {
-	pub fn recv<'a>(&'a mut self, interface: &ip::Interface, addr: IpAddr, buf: Slice) -> Result {
+impl<A: App> crate::Interface<A> {
+	pub fn recv_tcp(app: &mut A, cx: &mut Core<A>, addr: IpAddr, buf: Slice) -> Result {
 		Err(())
 	}
 }
