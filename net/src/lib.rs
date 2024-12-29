@@ -41,18 +41,9 @@ pub trait App: wireguard::App + Sized {
 }
 
 impl<A: App> Interface<A> {
-	pub fn init(
-		cx: &mut Core<A>,
-		link: impl FnOnce(Box<dyn FnMut(Slice)>) -> Wireguard<A>,
-		v4: Ipv4Addr,
-		v6: Ipv6Addr,
-		dns: IpAddr,
-	) -> Self {
-		let d = cx.deferrer();
-		let write = Box::new(move |buf| d.defer(|app, cx| Self::recv(app, cx, buf)));
-
+	pub fn init(link: Wireguard<A>, v4: Ipv4Addr, v6: Ipv6Addr, dns: IpAddr) -> Self {
 		Self {
-			link: link(write),
+			link,
 
 			#[cfg(feature = "pcap")]
 			pcap: pcap::Writer::new("./log.pcap").unwrap(),

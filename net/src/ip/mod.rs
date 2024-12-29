@@ -51,7 +51,7 @@ impl Interface {
 }
 
 impl<A: App> crate::Interface<A> {
-	pub(crate) fn recv(app: &mut A, cx: &mut Core<A>, buf: Slice) {
+	pub fn recv(app: &mut A, cx: &mut Core<A>, buf: Slice) {
 		#[cfg(feature = "pcap")]
 		let _ = app.net().pcap.log(&buf);
 

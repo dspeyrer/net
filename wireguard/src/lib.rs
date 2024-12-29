@@ -24,6 +24,8 @@ use crate::packet::{Cookie, Data, Initiation, Response, MAC_LEN};
 
 pub trait App: Sized + runtime::App {
 	fn wireguard(&mut self) -> &mut Wireguard<Self>;
+
+	fn on_packet(&mut self, cx: &mut Core<Self>, buf: Slice);
 }
 
 macro_rules! validate_packet_size {
@@ -41,19 +43,11 @@ macro_rules! validate_packet_size {
 pub struct Wireguard<A: 'static> {
 	interface: Interface,
 	peers: Map<Peer, 1>,
-	cb: Box<dyn FnMut(Slice)>,
 	io: runtime::State<A>,
 }
 
 impl<A: App> Wireguard<A> {
-	pub fn init(
-		mut io: runtime::State<A>,
-		addr: SocketAddr,
-		s_priv: [u8; 32],
-		p_pub: [u8; 32],
-		q_pre: [u8; 32],
-		cb: Box<dyn FnMut(Slice)>,
-	) -> Self {
+	pub fn init(mut io: runtime::State<A>, addr: SocketAddr, s_priv: [u8; 32], p_pub: [u8; 32], q_pre: [u8; 32]) -> Self {
 		let socket: std::io::Result<UdpSocket> = try {
 			let socket = UdpSocket::bind::<SocketAddr>(match addr {
 				SocketAddr::V4(_) => SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into(),
@@ -68,7 +62,7 @@ impl<A: App> Wireguard<A> {
 
 		let socket = socket.expect("Failed to create socket");
 
-		let link = Io::new(&mut io, socket, Box::new(move |app, cx, buf| app.wireguard().read(cx, buf)));
+		let link = Io::new(&mut io, socket, Box::new(move |app, cx, buf| Self::read(app, cx, buf)));
 
 		let mut peers = Map::<_, 1>::default();
 
@@ -80,7 +74,7 @@ impl<A: App> Wireguard<A> {
 		let peer = Peer::init(&interface, slot.index(), p_pub, q_pre);
 		slot.insert(peer);
 
-		Self { peers, interface, cb, io }
+		Self { peers, interface, io }
 	}
 
 	pub fn io(&mut self) -> &mut runtime::State<A> {
@@ -93,12 +87,12 @@ impl<A: App> Wireguard<A> {
 		}
 	}
 
-	fn read(&mut self, cx: &mut Core<A>, buf: Slice) {
+	fn read(app: &mut A, cx: &mut Core<A>, buf: Slice) {
 		let _ = match *bytes::cast(&*buf) {
-			packet::Tag::INITIATION => self.initiation(cx, buf),
-			packet::Tag::RESPONSE => self.response(cx, buf),
-			packet::Tag::COOKIE => self.cookie(cx, buf),
-			packet::Tag::DATA => self.data(cx, buf),
+			packet::Tag::INITIATION => app.wireguard().initiation(cx, buf),
+			packet::Tag::RESPONSE => app.wireguard().response(cx, buf),
+			packet::Tag::COOKIE => app.wireguard().cookie(cx, buf),
+			packet::Tag::DATA => Self::data(app, cx, buf),
 			_ => return warn!("Recieved packet with invalid message tag"),
 		};
 	}
@@ -124,7 +118,7 @@ impl<A: App> Wireguard<A> {
 		self.peers[Index::new(0)].handle_cookie(cx, bytes::cast_mut(&mut *buf))
 	}
 
-	fn data(&mut self, cx: &mut Core<A>, mut buf: Slice) -> Result {
+	fn data(app: &mut A, cx: &mut Core<A>, mut buf: Slice) -> Result {
 		let expected = size_of::<Data>() + size_of::<Tag>();
 
 		let n = buf.len();
@@ -134,12 +128,14 @@ impl<A: App> Wireguard<A> {
 			return Err(());
 		}
 
-		self.peers[Index::new(0)].handle_data(cx, &mut self.io, &self.interface, &mut buf)?;
+		let this = app.wireguard();
+
+		this.peers[Index::new(0)].handle_data(cx, &mut this.io, &this.interface, &mut buf)?;
 
 		if buf.is_empty() {
 			log::info!("Recieved keepalive");
 		} else {
-			(self.cb)(buf);
+			app.on_packet(cx, buf);
 		}
 
 		Ok(())
