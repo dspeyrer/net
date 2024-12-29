@@ -170,8 +170,8 @@ pub(crate) struct Interface {
 	map: HashMap<Key, TCB>,
 }
 
-impl crate::Interface {
-	pub fn recv_tcp<A: App>(app: &mut A, cx: &mut Core<A>, addr: IpAddr, buf: Slice) -> Result {
+impl<A: App> crate::Interface<A> {
+	pub fn recv_tcp(app: &mut A, cx: &mut Core<A>, addr: IpAddr, buf: Slice) -> Result {
 		Err(())
 	}
 }

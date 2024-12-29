@@ -46,8 +46,8 @@ pub(super) struct Header {
 	dst: Ipv4Addr,
 }
 
-impl crate::Interface {
-	pub fn recv_v4<A: App>(app: &mut A, cx: &mut Core<A>, buf: Slice) -> Result {
+impl<A: App> crate::Interface<A> {
+	pub fn recv_v4(app: &mut A, cx: &mut Core<A>, buf: Slice) -> Result {
 		let header: &Header = buf.split();
 
 		let ip = app.net().ip.v4;

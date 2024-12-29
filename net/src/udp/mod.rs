@@ -10,7 +10,7 @@ use utils::error::*;
 
 use crate::ip::Protocol::Udp;
 use crate::ip::{self, SocketAddr, ToS};
-use crate::{App, Interface};
+use crate::{dns, App, Interface};
 
 #[derive(Cast)]
 #[repr(C)]
@@ -21,8 +21,8 @@ struct Header {
 	csum: [u8; 2],
 }
 
-impl Interface {
-	pub fn recv_udp<A: App>(app: &mut A, cx: &mut Core<A>, addr: IpAddr, buf: Slice) -> Result {
+impl<A: App> Interface<A> {
+	pub fn recv_udp(app: &mut A, cx: &mut Core<A>, addr: IpAddr, buf: Slice) -> Result {
 		let this = app.net();
 
 		let len: u32 = buf.len().try_into().map_err(|_| log::warn!("UDP packet too big ({} bytes)", buf.len()))?;
@@ -56,14 +56,14 @@ impl Interface {
 		let src = SocketAddr { addr, port: header.src.get() };
 
 		match header.dst.get() {
-			n if n == app.dns_port() => app.net().dns.process(cx, src, buf),
+			n if n == A::DNS_PORT => dns::Resolver::process(app, cx, src, buf),
 			n => app.on_udp(cx, n, src, buf),
 		}
 
 		Ok(())
 	}
 
-	pub fn write_udp<A: App>(&mut self, cx: &mut Core<A>, src: u16, SocketAddr { addr, port }: SocketAddr, f: impl FnOnce(Cursor) + 'static) {
+	pub fn write_udp(&mut self, cx: &mut Core<A>, src: u16, SocketAddr { addr, port }: SocketAddr, f: impl FnOnce(Cursor) + 'static) {
 		let tos = ToS::new(ip::ECN::NotECT, ip::DiffServ::Default);
 
 		let mut csum = self.ip.pseudo_checksum(Udp, addr);

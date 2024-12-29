@@ -17,7 +17,7 @@ pub mod udp;
 
 pub use ip::SocketAddr;
 
-pub struct Interface {
+pub struct Interface<A: 'static> {
 	link: Wireguard,
 
 	#[cfg(feature = "pcap")]
@@ -28,20 +28,20 @@ pub struct Interface {
 	fragment: ip::fragment::Store,
 
 	tcp: tcp::Interface,
-	dns: dns::Resolver,
+	dns: dns::Resolver<A>,
 }
 
 pub trait App: wireguard::App + Sized {
-	fn dns_port(&self) -> u16;
+	const DNS_PORT: u16;
 
 	/// The UDP read callback.
 	fn on_udp(&mut self, cx: &mut Core<Self>, port: u16, src: SocketAddr, buf: Slice);
 
-	fn net(&mut self) -> &mut Interface;
+	fn net(&mut self) -> &mut Interface<Self>;
 }
 
-impl Interface {
-	pub fn init<A: App>(
+impl<A: App> Interface<A> {
+	pub fn init(
 		cx: &mut Core<A>,
 		link: impl FnOnce(&mut stakker::Core<A>, Box<dyn FnMut(Slice)>) -> Wireguard,
 		v4: Ipv4Addr,
