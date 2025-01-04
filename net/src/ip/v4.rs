@@ -7,7 +7,6 @@ use log::warn;
 use stakker::Core;
 use utils::bytes::{self, Cast};
 use utils::endian::{u16be, BigEndian};
-use utils::error::*;
 
 use super::{fragment, Interface};
 use crate::ip::Version::V4;
@@ -47,14 +46,14 @@ pub(super) struct Header {
 }
 
 impl<A: App> crate::Interface<A> {
-	pub fn recv_v4(app: &mut A, cx: &mut Core<A>, buf: Slice) -> Result {
+	pub fn recv_v4(app: &mut A, cx: &mut Core<A>, buf: Slice) {
 		let header: &Header = buf.split();
 
 		let ip = app.net().ip.v4;
 
 		if header.dst != ip {
 			warn!("Found IP packet with destination {}, expected {}", header.dst, ip);
-			return Err(());
+			return;
 		}
 
 		let header_len = 4 * header.ver.ihl().value() as usize;
@@ -71,7 +70,7 @@ impl<A: App> crate::Interface<A> {
 
 			if o != [0, 0] {
 				warn!("Packet has invalid checksum.");
-				return Err(());
+				return;
 			}
 		}
 
@@ -79,7 +78,7 @@ impl<A: App> crate::Interface<A> {
 
 		if buf.len() < payload_len {
 			log::warn!("IP packet smaller than specified length field.");
-			return Err(());
+			return;
 		}
 
 		buf.truncate(payload_len);
@@ -94,14 +93,18 @@ impl<A: App> crate::Interface<A> {
 
 		if start == 0 && !more {
 			// Process the packet regularly if it is not fragmented
-			Self::handle(app, cx, proto, src, buf)
+			Self::handle(app, cx, proto, src, header.tos, buf);
 		} else {
+			let ds = header.tos.ds();
+			let ecn = header.tos.ecn();
+
 			// Construct a fragmentation key and fragment.
-			let key = fragment::Key { ident: frag.idnt() as u32, proto, addr: src };
+			let key = fragment::Key { ident: frag.idnt() as u32, proto, addr: src, ds };
+
 			let fragment = fragment::Fragment { start, more, buf };
 
 			// Process them with the fragmentation handler
-			Self::handle_fragment(app, cx, key, fragment)
+			Self::handle_fragment(app, cx, key, fragment, ecn);
 		}
 	}
 }

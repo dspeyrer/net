@@ -7,7 +7,6 @@ use collections::bytes::{Cursor, Slice};
 use log::warn;
 use stakker::Core;
 use utils::bytes::{self, Cast};
-use utils::error::*;
 
 mod checksum;
 
@@ -80,11 +79,11 @@ impl<A: App> crate::Interface<A> {
 		});
 	}
 
-	pub(crate) fn handle(app: &mut A, cx: &mut Core<A>, proto: Protocol, addr: IpAddr, buf: Slice) -> Result {
+	pub(crate) fn handle(app: &mut A, cx: &mut Core<A>, proto: Protocol, addr: IpAddr, tos: ToS, buf: Slice) {
 		match proto {
-			Protocol::Udp => Self::recv_udp(app, cx, addr, buf),
-			Protocol::Tcp => Self::recv_tcp(app, cx, addr, buf),
-			Protocol::Unknown => Err(log::debug!("Unimplemented IP protocol")),
+			Protocol::Udp => Self::recv_udp(app, cx, addr, tos, buf),
+			Protocol::Tcp => Self::recv_tcp(app, cx, addr, tos, buf),
+			Protocol::Unknown => log::debug!("Unimplemented IP protocol"),
 		}
 	}
 }
@@ -159,7 +158,7 @@ pub struct ToS {
 }
 
 #[bitsize(6)]
-#[derive(FromBits)]
+#[derive(FromBits, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum DiffServ {
 	Default = 0,
 	#[fallback]
@@ -167,7 +166,7 @@ pub enum DiffServ {
 }
 
 #[bitsize(2)]
-#[derive(FromBits)]
+#[derive(FromBits, Clone, Copy, PartialEq, Eq)]
 pub enum ECN {
 	NotECT = 0b00,
 	ECT1 = 0b01,

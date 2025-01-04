@@ -1,4 +1,5 @@
-use core::{mem::MaybeUninit, ptr};
+use core::mem::MaybeUninit;
+use core::ptr;
 
 type Word = u64;
 
@@ -45,11 +46,7 @@ impl<const N: usize> Control<N> {
 
 impl<const N: usize> Default for Control<N> {
 	fn default() -> Self {
-		Self {
-			_align: [],
-			bytes: [0; N],
-			wrap: [0; MIRROR],
-		}
+		Self { _align: [], bytes: [0; N], wrap: [0; MIRROR] }
 	}
 }
 

@@ -1,13 +1,16 @@
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
+
+pub fn elapsed<A>(core: &stakker::Core<A>) -> Duration {
+	// Get the duration that has passed since the runtime was initialised.
+	core.now() - core.start_instant()
+}
 
 /// Get the current system time.
 pub fn system<A>(core: &stakker::Core<A>) -> SystemTime {
 	// Get the system time of initialisation of the runtime.
 	let time = core.systime();
-	// Get the duration that has passed since the runtime was initialised.
-	let dur = core.now() - core.start_instant();
 	// Simulate the current system time using the monotonic clock.
-	time + dur
+	time + elapsed(core)
 }
 
 /// Get the UNIX time in seconds.

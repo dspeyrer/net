@@ -22,14 +22,17 @@ struct Header {
 }
 
 impl<A: App> Interface<A> {
-	pub fn recv_udp(app: &mut A, cx: &mut Core<A>, addr: IpAddr, buf: Slice) -> Result {
+	pub fn recv_udp(app: &mut A, cx: &mut Core<A>, addr: IpAddr, _: ToS, buf: Slice) {
 		let this = app.net();
 
-		let len: u32 = buf.len().try_into().map_err(|_| log::warn!("UDP packet too big ({} bytes)", buf.len()))?;
+		let Ok(len): Result<u32, _> = buf.len().try_into() else {
+			log::warn!("UDP packet too big ({} bytes)", buf.len());
+			return;
+		};
 
 		if buf.len() < size_of::<Header>() {
 			log::warn!("UDP header too short (got {} bytes)", buf.len());
-			return Err(());
+			return;
 		}
 
 		if addr.is_ipv6() || bytes::cast::<Header, _>(&*buf).csum != [0, 0] {
@@ -42,7 +45,7 @@ impl<A: App> Interface<A> {
 
 			if v != [0, 0] {
 				warn!("Packet with invalid UDP checksum");
-				return Err(());
+				return;
 			}
 		}
 
@@ -50,7 +53,7 @@ impl<A: App> Interface<A> {
 
 		if header.len.get() as u32 != len {
 			log::warn!("UDP header length ({len}) does not match actual packet length ({})", len);
-			return Err(());
+			return;
 		}
 
 		let src = SocketAddr { addr, port: header.src.get() };
@@ -59,8 +62,6 @@ impl<A: App> Interface<A> {
 			n if n == A::DNS_PORT => dns::Resolver::process(app, cx, src, buf),
 			n => app.on_udp(cx, n, src, buf),
 		}
-
-		Ok(())
 	}
 
 	pub fn write_udp(&mut self, cx: &mut Core<A>, src: u16, SocketAddr { addr, port }: SocketAddr, f: impl FnOnce(Cursor) + 'static) {

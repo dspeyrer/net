@@ -1,18 +1,71 @@
 use core::net::IpAddr;
+use std::cmp::Ordering;
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, VecDeque};
-use std::ptr::NonNull;
+use std::num::NonZero;
+use std::ops::{Add, Sub};
 
 use bilge::prelude::*;
 use collections::bytes::Slice;
 use stakker::Core;
 use utils::bytes::Cast;
 use utils::endian::{u16be, u32be, u64be, BigEndian};
-use utils::error::*;
 
-use crate::ip::SocketAddr;
+use crate::ip::Protocol::Tcp;
+use crate::ip::{SocketAddr, ToS};
 use crate::App;
 
+/// A fundamental notion in the design is that every octet of data sent over a TCP connection has a sequence number. Since every octet is sequenced, each of them can be acknowledged. The acknowledgment mechanism employed is cumulative so that an acknowledgment of sequence number X indicates that all octets up to but not including X have been received. This mechanism allows for straightforward duplicate detection in the presence of retransmission. The numbering scheme of octets within a segment is as follows: the first data octet immediately following the header is the lowest numbered, and the following octets are numbered consecutively.
+///
+/// It is essential to remember that the actual sequence number space is finite, though large. This space ranges from 0 to 232 - 1. Since the space is finite, all arithmetic dealing with sequence numbers must be performed modulo 232. This unsigned arithmetic preserves the relationship of sequence numbers as they cycle from 232 - 1 to 0 again. There are some subtleties to computer modulo arithmetic, so great care should be taken in programming the comparison of such values. The symbol "=<" means "less than or equal" (modulo 2^32).
+#[derive(PartialEq, Eq, Clone, Copy)]
+struct Seq(u32);
+
+impl From<u32> for Seq {
+	fn from(value: u32) -> Self {
+		Self(value)
+	}
+}
+
+impl Add<u32> for Seq {
+	type Output = Self;
+
+	fn add(self, rhs: u32) -> Self::Output {
+		Self(self.0.wrapping_add(rhs))
+	}
+}
+
+impl Sub<u32> for Seq {
+	type Output = Self;
+
+	fn sub(self, rhs: u32) -> Self::Output {
+		Self(self.0.wrapping_sub(rhs))
+	}
+}
+
+impl PartialOrd for Seq {
+	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+		Some(self.cmp(other))
+	}
+}
+
+impl Ord for Seq {
+	fn cmp(&self, other: &Self) -> Ordering {
+		// Find the wrapping difference between the two sequence numbers.
+		match other.0.wrapping_sub(self.0) {
+			// If the difference between the sequence numbers is more than half
+			// the sequence space, then `self` must be greater than `other`.
+			n if n > u32::MAX / 2 => Ordering::Greater,
+			// If the difference is zero, then the sequence numbers are equal.
+			0 => Ordering::Equal,
+			// Otherwise, the sequence number is greater.
+			_ => Ordering::Less,
+		}
+	}
+}
+
 #[bitsize(16)]
+#[derive(FromBits)]
 struct Control {
 	/// No more data from sender.
 	fin: bool,
@@ -79,17 +132,17 @@ enum OptKind {
 /// 4. future sequence numbers that are not yet allowed
 struct SndSeq {
 	/// unacknowledged
-	una: u32,
+	una: Seq,
 	/// next
-	nxt: u32,
+	nxt: Seq,
 	/// window
 	wnd: u32,
 	/// urgent pointer
-	up: u32,
+	up: Seq,
 	/// segment sequence number used for last window update
-	wl1: u32,
+	wl1: Seq,
 	/// segment acknowledgment number used for last window update
-	wl2: u32,
+	wl2: Seq,
 }
 
 /// The recieve sequence variables.
@@ -104,13 +157,14 @@ struct SndSeq {
 /// 3. future sequence numbers that are not yet allowed
 struct RcvSeq {
 	/// next
-	nxt: u32,
+	nxt: Seq,
 	/// window
 	wnd: u32,
 	/// urgent pointer
-	up: u32,
+	up: Seq,
 }
 
+#[derive(Clone, Copy)]
 enum State {
 	/// Represents waiting for a connection request from any remote TCP peer and port.
 	Listen,
@@ -140,13 +194,15 @@ enum State {
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 struct Key {
 	/// The local port of the connection, if any.
-	port: Option<NonNull<u16>>,
+	port: Option<NonZero<u16>>,
 	/// The remote IP address of the connection.
 	addr: SocketAddr,
 }
 
 /// The Transmission Control Block, which holds state for a TCP connection.
 struct TCB {
+	/// The state of the TCB.
+	state: State,
 	/// The send buffer.
 	send: VecDeque<Slice>,
 	/// The retransmit queue.
@@ -157,12 +213,37 @@ struct TCB {
 	/// Send sequence variables.
 	snd: SndSeq,
 	/// initial send sequence number
-	iss: u32,
+	iss: Seq,
 
 	/// Recieve sequence variables.
 	rcv: RcvSeq,
 	/// initial receive sequence number
-	irs: u32,
+	irs: Seq,
+}
+
+impl TCB {
+	/// A new acknowledgment (called an "acceptable ack") is one for which the inequality holds: SND.UNA < SEG.ACK =< SND.NXT
+	fn is_acceptable_ack(&self, seg_ack: Seq) -> bool {
+		self.snd.una < seg_ack && seg_ack <= self.snd.nxt
+	}
+
+	/// Test the acceptability of a recieved segment.
+	fn is_acceptable_seg(&self, seg_seq: Seq, seg_len: u32) -> bool {
+		match (seg_len, self.rcv.wnd) {
+			(0, 0) => seg_seq == self.rcv.nxt,
+			(0, _) => self.rcv.nxt <= seg_seq && seg_seq < self.rcv.nxt + self.rcv.wnd,
+			(_, 0) => false,
+			(_, _) => {
+				(self.rcv.nxt <= seg_seq && seg_seq < self.rcv.nxt + self.rcv.wnd)
+					|| (self.rcv.nxt <= seg_seq + seg_len - 1 && seg_seq + seg_len - 1 < self.rcv.nxt + self.rcv.wnd)
+			}
+		}
+	}
+
+	/// Generate an initial sequence number.
+	fn gen_isn<A>(&self, c: &mut Core<A>) -> Seq {
+		todo!()
+	}
 }
 
 #[derive(Default)]
@@ -171,7 +252,54 @@ pub(crate) struct Interface {
 }
 
 impl<A: App> crate::Interface<A> {
-	pub fn recv_tcp(app: &mut A, cx: &mut Core<A>, addr: IpAddr, buf: Slice) -> Result {
-		Err(())
+	pub fn recv_tcp(app: &mut A, cx: &mut Core<A>, addr: IpAddr, tos: ToS, buf: Slice) {
+		let net = app.net();
+
+		if buf.len() < size_of::<Header>() {
+			return;
+		}
+
+		let packet = buf.split::<Header>();
+
+		let src = SocketAddr { addr, port: packet.src.get() };
+
+		let Some(dst) = NonZero::new(packet.dst.get()) else {
+			log::warn!("Recieved packet addressed to TCP port 0");
+			return;
+		};
+
+		let tcb = net.tcp.map.entry(Key { addr: src, port: Some(dst) });
+
+		let state = match &tcb {
+			Entry::Occupied(occupied) => occupied.get().state,
+			Entry::Vacant(_) => State::Closed,
+		};
+
+		let ctl = packet.ctl.get();
+
+		match state {
+			State::Closed => {
+				// If the state is CLOSED (i.e., TCB does not exist), then all
+				// data in the incoming segment is discarded.
+
+				// An incoming segment containing a RST is discarded.
+				if ctl.rst() {
+					return;
+				}
+
+				// An incoming segment not containing a RST causes a RST to be
+				// sent in response. The acknowledgment and sequence field
+				// values are selected to make the reset sequence acceptable to
+				// the TCP endpoint that sent the offending segment.
+				todo!();
+
+				// If the ACK bit is off, sequence number zero is used,
+				// <SEQ=0><ACK=SEG.SEQ+SEG.LEN><CTL=RST,ACK>
+
+				// If the ACK bit is on,
+				// <SEQ=SEG.ACK><CTL=RST>
+			}
+			_ => todo!()
+		}
 	}
 }

@@ -7,7 +7,6 @@ use log::warn;
 use stakker::Core;
 use utils::bytes::Cast;
 use utils::endian::{u16be, BigEndian};
-use utils::error::*;
 
 use super::{Interface, Protocol};
 use crate::ip::ToS;
@@ -34,21 +33,23 @@ struct Header {
 }
 
 impl<A: App> crate::Interface<A> {
-	pub fn recv_v6(app: &mut A, cx: &mut Core<A>, buf: Slice) -> Result {
+	pub fn recv_v6(app: &mut A, cx: &mut Core<A>, buf: Slice) {
 		let header: &Header = buf.split();
+
+		let ver = header.ver.get();
 
 		let ip = app.net().ip.v6;
 
 		if header.dst != ip {
 			warn!("Found IP packet with destination {}, expected {}", header.dst, ip);
-			return Err(());
+			return;
 		}
 
 		let payload_len = header.len.get() as usize - size_of::<Header>();
 
 		if buf.len() < payload_len {
 			log::warn!("IP packet smaller than specified length field.");
-			return Err(());
+			return;
 		}
 
 		buf.truncate(payload_len);
@@ -56,7 +57,7 @@ impl<A: App> crate::Interface<A> {
 		let proto = header.nxt.get();
 		let src = IpAddr::V6(header.src);
 
-		Self::handle(app, cx, proto, src, buf)
+		Self::handle(app, cx, proto, src, ver.tos(), buf)
 	}
 }
 
