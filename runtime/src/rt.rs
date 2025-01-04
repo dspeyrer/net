@@ -31,14 +31,12 @@ pub fn exec<A: App + 'static>(f: impl FnOnce(&mut Core<A>, State<A>) -> A) -> Re
 		log::error!("Error occurred while setting Ctrl+C handler: {err}");
 	}
 
-	let mut idle_pending = false;
-
 	// Run while the exit flag has not been set.
 	while !EXIT.load(Ordering::Relaxed) {
 		// Update the time.
 		app.io().exec += cx.update_time();
 		// Get the timeout for the next query.
-		let timeout = cx.next_wait(idle_pending);
+		let timeout = cx.next_wait();
 		// If there is no timeout and no more sockets to poll, there is no more work to do. Exit.
 		if timeout.is_none() && !app.io().is_io() {
 			break;
@@ -50,7 +48,7 @@ pub fn exec<A: App + 'static>(f: impl FnOnce(&mut Core<A>, State<A>) -> A) -> Re
 		// Execute I/O callbacks.
 		let io_occurred = State::execute(&mut app, &mut cx, pending)?;
 		// Execute expired timers, running the idle queue if no I/O occurred.
-		idle_pending = cx.run(&mut app, !io_occurred);
+		cx.run(&mut app, !io_occurred);
 	}
 
 	Ok(())

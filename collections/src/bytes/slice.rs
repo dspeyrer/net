@@ -6,23 +6,44 @@ use std::ops::{Deref, DerefMut};
 
 use utils::bytes::{self, Cast};
 
-use super::rc;
+use core::mem::align_of;
+use std::alloc::{self, Layout};
 
-#[derive(Clone)]
+
+/// Get the layout required to represent bytes of the specified length
+unsafe fn layout(len: usize) -> Layout {
+	Layout::from_size_align(size_of::<Meta>() + len, align_of::<Meta>()).unwrap()
+}
+
+struct Meta {
+	/// The number of bytes in this allocation after the end of the [Meta] section.
+	len: usize,
+}
+
+
 pub struct Slice {
-	/// The reference-counted allocation
-	pub(crate) _alloc: rc::Alloc,
+	/// A pointer to the allocation base
+	mta: NonNull<Meta>,
 	/// A pointer within the allocation
-	pub(crate) ptr: Cell<NonNull<u8>>,
+	ptr: Cell<NonNull<u8>>,
 	/// The length of the slice
-	pub(crate) len: Cell<usize>,
+	len: Cell<usize>,
 }
 
 impl Slice {
 	pub fn new(len: usize) -> Self {
-		let _alloc = rc::Alloc::zeroed(len);
-		let ptr = _alloc.base_ptr();
-		Self { _alloc, ptr: Cell::new(ptr), len: Cell::new(len) }
+		unsafe {
+			// The layout will never be zero-sized, since a `Meta` structure is always appended to the beginning of it.
+			let acn = alloc::alloc_zeroed(layout(len));
+			// The allocator API should never return a null pointer.
+			let acn = NonNull::new_unchecked(acn).cast::<Meta>();
+			// Write in the allocation length and initial reference count, which is 1.
+			acn.write(Meta { len });
+			// Get the base data pointer.
+			let ptr = acn.add(1).cast::<u8>();
+			// Construct the slice.
+			Self { mta: acn, ptr: Cell::new(ptr), len: Cell::new(len) }
+		}
 	}
 
 	pub fn split_max(&self, mut n: usize) -> &[u8] {
@@ -73,6 +94,15 @@ impl Slice {
 	pub fn truncate(&self, len: usize) {
 		assert!(len <= self.len());
 		self.len.set(len);
+	}
+}
+
+impl Drop for Slice {
+	fn drop(&mut self) {
+		// Get the length of the allocation
+		let Meta { len } = unsafe { self.mta.read() };
+		// Deallocate the buffer
+		unsafe { std::alloc::dealloc(self.mta.as_ptr() as _, layout(len)) };
 	}
 }
 

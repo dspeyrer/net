@@ -82,7 +82,7 @@ fn send(fd: RawFd, buf: &[u8]) -> Result<bool> {
 }
 
 fn recv(fd: RawFd, buf: &mut Slice) -> Result<bool> {
-	let r = unsafe { sys::recv(fd, buf.as_mut_ptr() as *mut BufType, buf.len() as _, 0) };
+	let r = unsafe { sys::recv(fd, buf.as_ptr() as *mut BufType, buf.len() as _, 0) };
 
 	if let Some(n) = ret_to_err(r as _)? {
 		buf.truncate(n);
