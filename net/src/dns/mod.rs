@@ -53,10 +53,8 @@ impl<A: App> Resolver<A> {
 	fn query(net: &mut Interface<A>, cx: &mut Core<A>, id: u16, server: IpAddr, name: String) -> FixedTimerKey {
 		info!("Querying DNS server {} for {} (0x{:x})", server, name, id);
 
-		let n = name.clone();
-
 		// Query port 53 of the server
-		net.write_udp(cx, A::DNS_PORT, SocketAddr { addr: server, port: 53 }, move |buf| {
+		net.write_udp(cx, A::DNS_PORT, SocketAddr { addr: server, port: 53 }, |buf| {
 			let (header, mut buf): (&mut Header, _) = buf.split();
 
 			// ID from parameters so that it can be duplicated between requests
@@ -71,8 +69,8 @@ impl<A: App> Resolver<A> {
 			header.nscount = 0.into();
 			header.arcount = 0.into();
 
-			for name in n.split(".") {
-				let bytes = name.as_bytes();
+			for n in name.split(".") {
+				let bytes = n.as_bytes();
 
 				assert!(bytes.len() <= 63);
 
