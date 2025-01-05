@@ -122,7 +122,7 @@ impl Tunnel {
 		let len = data.pivot();
 
 		// Push the packet header.
-		let mut cur = buf.inner.cursor();
+		let cur = buf.inner.cursor();
 		let mut cur = cur.push(&Data { tag: packet::Tag::DATA, idx: self.sidx, ctr });
 		// Skip the payload, which has already been filled.
 		cur.advance(len);

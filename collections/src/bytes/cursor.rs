@@ -60,7 +60,7 @@ impl<'a> Cursor<'a> {
 
 	/// Returns a cursor limited to `len` bytes.
 	#[inline]
-	pub fn lim(mut self, len: usize) -> Self {
+	pub fn lim(self, len: usize) -> Self {
 		Self { slice: &mut self.slice[..len], pivot: self.pivot }
 	}
 

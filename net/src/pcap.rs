@@ -1,6 +1,5 @@
 //! https://wiki.wireshark.org/Development/LibpcapFileFormat
 
-use alloc::rc::Rc;
 use std::fs::File;
 use std::io::{IoSlice, Read, Write};
 use std::mem::size_of;
@@ -17,15 +16,13 @@ use crate::App;
 
 const SNAPLEN: u32 = u32::MAX;
 
-#[derive(Clone)]
 pub struct Writer {
-	file: Rc<File>,
+	file: File,
 }
 
 impl Writer {
 	pub fn new(path: &str) -> Result<Self> {
 		let file = File::create(path).map_err(|_| warn!("Unable to create pcap file"))?;
-		let file = Rc::new(file);
 
 		let header = Header {
 			// 0xa1b23c4d for nanosecond-resolution files, 0xa1b2c3d4 for microsecond
@@ -38,7 +35,7 @@ impl Writer {
 			network: Linktype::RAW,
 		};
 
-		(&*file)
+		(&file)
 			.write_all(bytes::as_slice(&header))
 			.map_err(|_| warn!("Could not write header to file"))?;
 
@@ -60,7 +57,7 @@ impl Writer {
 			orig_len: packet_len,
 		};
 
-		(&*self.file)
+		(&self.file)
 			.write_all_vectored(&mut [IoSlice::new(bytes::as_slice(&packet_header)), IoSlice::new(&packet[..incl_len as usize])])
 			.map_err(|err| warn!("Unable to write header to file: {err}"))?;
 

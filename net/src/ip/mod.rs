@@ -51,7 +51,7 @@ impl Interface {
 impl<A: App> crate::Interface<A> {
 	pub fn recv(app: &mut A, cx: &mut Core<A>, buf: Slice) {
 		#[cfg(feature = "pcap")]
-		let _ = app.net().pcap.log(&buf);
+		let _ = app.net().pcap.log(cx, &buf);
 
 		let ver = bytes::cast::<Prefix, _>(&*buf).ver();
 
@@ -67,12 +67,12 @@ impl<A: App> crate::Interface<A> {
 		let mut cur = buf.cursor();
 
 		match addr {
-			IpAddr::V4(addr) => self.ip.write_v4(cur, protocol, addr, tos, f),
-			IpAddr::V6(addr) => self.ip.write_v6(cur, protocol, addr, tos, f),
+			IpAddr::V4(addr) => self.ip.write_v4(cur.fork(), protocol, addr, tos, f),
+			IpAddr::V6(addr) => self.ip.write_v6(cur.fork(), protocol, addr, tos, f),
 		}
 
 		#[cfg(feature = "pcap")]
-		let _ = self.pcap.log(&buf[..buf.pivot()]);
+		let _ = self.pcap.log(cx, &cur[..cur.pivot()]);
 
 		self.link.write(cx, buf);
 	}
