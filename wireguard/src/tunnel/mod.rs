@@ -42,7 +42,13 @@ impl Interface {
 		Self { key, pubkey, hash, mac, link }
 	}
 
-	pub fn handle_initiation<A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State<A>, peers: &mut Map<Peer, 1>, msg: &mut Initiation) -> Result {
+	pub fn handle_initiation<A: App>(
+		&mut self,
+		cx: &mut Core<A>,
+		io: &mut runtime::State<A>,
+		peers: &mut Map<Peer, 1>,
+		msg: &mut Initiation,
+	) -> Result {
 		info!("Recieved initiation packet");
 
 		let idx = msg.idx;
@@ -95,11 +101,25 @@ impl Peer {
 		this
 	}
 
-	pub fn write<A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State<A>, wg: &Interface, f: impl FnOnce(Cursor) + 'static, is_keepalive: bool) -> Result {
+	pub fn write<A: App>(
+		&mut self,
+		cx: &mut Core<A>,
+		io: &mut runtime::State<A>,
+		wg: &Interface,
+		f: impl FnOnce(Cursor) + 'static,
+		is_keepalive: bool,
+	) -> Result {
 		let rekey = match &mut self.wheel.pair {
 			Some((_, ref mut tun)) if !tun.is_send_expired(cx) => {
 				let cx1 = &mut *cx;
-				let rekey = wg.link.write(io, move |buf| tun.send(cx1, buf, f))?;
+
+				let mut vec = wg.link.buf();
+				let buf = vec.cursor();
+
+				let rekey = tun.send(cx1, buf, f);
+
+				wg.link.write(io, vec)?;
+
 				self.timers.send_data(cx, is_keepalive);
 				rekey
 			}
@@ -136,7 +156,14 @@ impl Peer {
 		Ok(())
 	}
 
-	pub fn create_response<A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State<A>, wg: &Interface, idx: u32, state: ResponderHandshake) -> Result {
+	pub fn create_response<A: App>(
+		&mut self,
+		cx: &mut Core<A>,
+		io: &mut runtime::State<A>,
+		wg: &Interface,
+		idx: u32,
+		state: ResponderHandshake,
+	) -> Result {
 		self.wheel.next = Some((idx, self.hs.create_response(cx, io, wg, idx, state)?));
 		self.timers.send_resp(cx);
 		Ok(())
@@ -252,39 +279,52 @@ impl Noise {
 	}
 
 	fn create_initiation<A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State<A>, wg: &Interface) -> Result<SentHandshake> {
-		wg.link.write(io, |mut buf| {
-			let msg: &mut Initiation = buf.fork().cast();
-			msg.tag = Tag::INITIATION;
+		let mut vec = wg.link.buf();
+		let mut buf = vec.cursor();
 
-			let idx = self.new_idx();
-			msg.idx = idx;
+		let msg: &mut Initiation = buf.fork().cast();
+		msg.tag = Tag::INITIATION;
 
-			let state = InitiatorHandshake::create_initiation(cx, &wg, self, msg);
-			let mac = self.mac.write(cx, buf);
+		let idx = self.new_idx();
+		msg.idx = idx;
 
-			log::info!("Sent initiation packet 0x{:x}", idx);
+		let state = InitiatorHandshake::create_initiation(cx, &wg, self, msg);
+		let mac = self.mac.write(cx, buf);
 
-			SentHandshake { state, idx, mac }
-		})
+		log::info!("Sent initiation packet 0x{:x}", idx);
+
+		wg.link.write(io, vec)?;
+
+		Ok(SentHandshake { state, idx, mac })
 	}
 
-	fn create_response<A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State<A>, wg: &Interface, rcv_idx: u32, state: ResponderHandshake) -> Result<Next> {
-		wg.link.write(io, |mut buf| {
-			let res: &mut Response = buf.fork().cast();
-			res.tag = Tag::RESPONSE;
+	fn create_response<A: App>(
+		&mut self,
+		cx: &mut Core<A>,
+		io: &mut runtime::State<A>,
+		wg: &Interface,
+		rcv_idx: u32,
+		state: ResponderHandshake,
+	) -> Result<Next> {
+		let mut vec = wg.link.buf();
+		let mut buf = vec.cursor();
 
-			let idx = self.new_idx();
-			res.idx = idx;
+		let res: &mut Response = buf.fork().cast();
+		res.tag = Tag::RESPONSE;
 
-			res.rcv_idx = rcv_idx;
+		let idx = self.new_idx();
+		res.idx = idx;
 
-			log::info!("Sent response packet 0x{:x}", idx);
+		res.rcv_idx = rcv_idx;
 
-			let chain = state.create_response(self, res);
-			let mac = self.mac.write(cx, buf);
+		log::info!("Sent response packet 0x{:x}", idx);
 
-			Next::new(cx, chain, idx, mac)
-		})
+		let chain = state.create_response(self, res);
+		let mac = self.mac.write(cx, buf);
+
+		wg.link.write(io, vec)?;
+
+		Ok(Next::new(cx, chain, idx, mac))
 	}
 
 	fn handle_response<A>(&self, cx: &mut Core<A>, state: &InitiatorHandshake, i: &Interface, msg: &mut Response) -> Result<Tunnel> {

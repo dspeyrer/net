@@ -6,19 +6,12 @@ use utils::bytes::{self, Cast};
 /// A utility structure for mutating byteslices.
 pub struct Cursor<'a> {
 	/// The underlying buffer
-	slice: &'a mut [u8],
+	pub(super) slice: &'a mut [u8],
 	/// A pointer within `slice`
-	pivot: &'a mut usize,
+	pub(super) pivot: &'a mut usize,
 }
 
 impl<'a> Cursor<'a> {
-	pub fn vec<X>(vec: &mut Vec<u8>, f: impl FnOnce(Cursor) -> X) -> X {
-		let mut ptr = vec.as_ptr() as usize;
-		let t = f(Cursor { slice: vec, pivot: &mut ptr });
-		vec.truncate(ptr - vec.as_ptr() as usize);
-		t
-	}
-
 	/// Gets the index of the pivot position within the slice.
 	#[inline]
 	pub fn pivot(&self) -> usize {

@@ -4,7 +4,7 @@ use alloc::collections::VecDeque;
 use core::time::Duration;
 use std::io::{self, ErrorKind};
 
-use collections::bytes::{Cursor, Slice};
+use collections::bytes::{Buf, Slice};
 use log::error;
 use stakker::Core;
 
@@ -207,7 +207,7 @@ impl<A> Drop for State<A> {
 
 struct Entry<A: 'static> {
 	cb: Option<Box<dyn FnMut(&mut A, &mut Core<A>, Slice)>>,
-	queue: VecDeque<Box<[u8]>>,
+	queue: VecDeque<Buf>,
 }
 
 impl<A> Entry<A> {
@@ -230,7 +230,7 @@ impl<A> Entry<A> {
 		loop {
 			let Some(buf) = self.queue.back_mut() else { return Ok(true) };
 
-			if !send(fd, buf)? {
+			if !send(fd, buf.filled())? {
 				return Ok(false);
 			}
 
@@ -251,17 +251,19 @@ impl<T: AsRawFd> Io<T> {
 		Self { inner }
 	}
 
-	pub fn write<A: App, X>(&self, state: &mut State<A>, f: impl FnOnce(Cursor) -> X) -> Result<X> {
-		let mut vec = vec![0; 1500];
-		let res = Cursor::vec(&mut vec, f);
+	pub fn buf(&self) -> Buf {
+		// TODO: reuse these allocations by reclaiming them after write calls.
+		Buf::zeroed(1500)
+	}
 
-		if !send(as_raw(&self.inner), &mut vec)? {
+	pub fn write<A: App>(&self, state: &mut State<A>, buf: Buf) -> Result {
+		if !send(as_raw(&self.inner), buf.filled())? {
 			let idx = state.idx_of(&self.inner);
-			state.entries[idx].queue.push_front(vec.into_boxed_slice());
+			state.entries[idx].queue.push_front(buf);
 			state.fds[idx].events |= POLLOUT;
 		}
 
-		Ok(res)
+		Ok(())
 	}
 
 	pub fn unbind<A: App>(self, state: &mut State<A>) {
