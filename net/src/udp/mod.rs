@@ -64,7 +64,7 @@ impl<A: App> Interface<A> {
 		}
 	}
 
-	pub fn write_udp(&mut self, cx: &mut Core<A>, src: u16, SocketAddr { addr, port }: SocketAddr, f: impl FnOnce(Cursor) + 'static) {
+	pub fn write_udp(&mut self, cx: &mut Core<A>, src: u16, SocketAddr { addr, port }: SocketAddr, f: impl FnOnce(Cursor)) {
 		let tos = ToS::new(ip::ECN::NotECT, ip::DiffServ::Default);
 
 		let mut csum = self.ip.pseudo_checksum(Udp, addr);

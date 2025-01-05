@@ -10,7 +10,7 @@ use core::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::net::UdpSocket;
 
 use chacha20poly1305::Tag;
-use collections::bytes::{Cursor, Slice};
+use collections::bytes::{Buf, Cursor, Slice};
 use collections::map::{Index, Map};
 use log::{error, info, warn};
 use runtime::Io;
@@ -26,6 +26,31 @@ pub trait App: Sized + runtime::App {
 	fn wireguard(&mut self) -> &mut Wireguard<Self>;
 
 	fn on_packet(&mut self, cx: &mut Core<Self>, buf: Slice);
+}
+
+/// A buffer for a WireGuard packet.
+pub struct Packet {
+	/// The underlying I/O packet.
+	inner: Buf,
+}
+
+impl Packet {
+	pub fn cursor(&mut self) -> Cursor {
+		// Get a cursor to the underlying buffer.
+		let cur = self.inner.cursor();
+		// Split off the data header.
+		let (_, cur): (&mut Data, _) = cur.split();
+
+		// Get the capacity of the packet payload.
+		let mut len = cur.len();
+		// Remove unusable capacity due to tag alignment.
+		len -= len % size_of::<Tag>();
+		// Remove the capacity of the tag.
+		len -= size_of::<Tag>();
+
+		// Return a cursor limited to the data section of the packet.
+		cur.lim(len)
+	}
 }
 
 macro_rules! validate_packet_size {
@@ -77,12 +102,17 @@ impl<A: App> Wireguard<A> {
 		Self { peers, interface, io }
 	}
 
+	/// Gets a packet buffer for writing.
+	pub fn buf(&self) -> Packet {
+		Packet { inner: self.interface.link.buf() }
+	}
+
 	pub fn io(&mut self) -> &mut runtime::State<A> {
 		&mut self.io
 	}
 
-	pub fn write(&mut self, cx: &mut Core<A>, f: impl FnOnce(Cursor) + 'static) {
-		if self.peers[Index::new(0)].write(cx, &mut self.io, &self.interface, f, false).is_err() {
+	pub fn write(&mut self, cx: &mut Core<A>, buf: Packet) {
+		if self.peers[Index::new(0)].write(cx, &mut self.io, &self.interface, buf, false).is_err() {
 			error!("Failed to write packet");
 		}
 	}
@@ -144,7 +174,9 @@ impl<A: App> Wireguard<A> {
 	fn send_keepalive(&mut self, cx: &mut Core<A>, idx: Index<1>) {
 		info!("Sending keepalive packet");
 
-		if let Err(()) = &self.peers[idx].write(cx, &mut self.io, &self.interface, |_| (), true) {
+		let buf = self.buf();
+
+		if let Err(()) = &self.peers[idx].write(cx, &mut self.io, &self.interface, buf, true) {
 			error!("Encountered error sending keepalive");
 		}
 	}

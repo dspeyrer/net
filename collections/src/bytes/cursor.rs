@@ -18,6 +18,11 @@ impl<'a> Cursor<'a> {
 		*self.pivot - self.slice.as_ptr() as usize
 	}
 
+	/// Advances the pivot by `n` bytes.
+	pub fn advance(&mut self, n: usize) {
+		*self.pivot += n;
+	}
+
 	/// Pushes an object to the buffer, advancing the pivot.
 	pub fn push<T: Cast + ?Sized>(self, t: &T) -> Self {
 		let bytes = bytes::as_slice(t);
@@ -53,10 +58,10 @@ impl<'a> Cursor<'a> {
 		(Cursor { slice: l, pivot: self.pivot }, bytes::cast_mut(r))
 	}
 
-	/// Returns a new `Buffer` limited to `len` bytes.
+	/// Returns a cursor limited to `len` bytes.
 	#[inline]
-	pub fn lim(&mut self, len: usize) -> Cursor {
-		Cursor { slice: &mut self.slice[..len], pivot: self.pivot }
+	pub fn lim(mut self, len: usize) -> Self {
+		Self { slice: &mut self.slice[..len], pivot: self.pivot }
 	}
 
 	/// Returns a new `Buffer` limited to `len` bytes less than the total buffer size.

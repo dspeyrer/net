@@ -9,7 +9,7 @@ use runtime::Io;
 use stakker::Core;
 use utils::error::*;
 mod timers;
-use collections::bytes::{Cursor, Slice};
+use collections::bytes::Slice;
 use collections::map::{Index, Key, Map};
 use state::*;
 use tai64::Tai64N;
@@ -19,7 +19,7 @@ use self::timers::Timers;
 use crate::mac::{CookieMac, Mac1};
 use crate::noise::{Hash, InitiatorHandshake, ResponderHandshake, A32};
 use crate::packet::{Cookie, Data, Initiation, Response, Tag, Timestamp};
-use crate::App;
+use crate::{App, Packet};
 
 pub struct Interface {
 	pub mac: CookieMac,
@@ -74,7 +74,7 @@ struct Wheel {
 
 pub struct Peer {
 	wheel: Wheel,
-	queue: Vec<Box<dyn FnOnce(Cursor)>>,
+	queue: Vec<Packet>,
 	pub timers: Timers,
 	pub hs: Noise,
 }
@@ -101,31 +101,18 @@ impl Peer {
 		this
 	}
 
-	pub fn write<A: App>(
-		&mut self,
-		cx: &mut Core<A>,
-		io: &mut runtime::State<A>,
-		wg: &Interface,
-		f: impl FnOnce(Cursor) + 'static,
-		is_keepalive: bool,
-	) -> Result {
+	pub fn write<A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State<A>, wg: &Interface, mut buf: Packet, is_keepalive: bool) -> Result {
 		let rekey = match &mut self.wheel.pair {
 			Some((_, ref mut tun)) if !tun.is_send_expired(cx) => {
-				let cx1 = &mut *cx;
-
-				let mut vec = wg.link.buf();
-				let buf = vec.cursor();
-
-				let rekey = tun.send(cx1, buf, f);
-
-				wg.link.write(io, vec)?;
+				let rekey = tun.send(cx, &mut buf);
+				wg.link.write(io, buf.inner)?;
 
 				self.timers.send_data(cx, is_keepalive);
 				rekey
 			}
 			_ if !is_keepalive => {
 				self.wheel.pair = None;
-				self.queue.push(Box::new(f));
+				self.queue.push(buf);
 				true
 			}
 			_ => {

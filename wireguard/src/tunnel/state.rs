@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use chacha20poly1305::aead::AeadInPlace;
 use chacha20poly1305::{ChaCha20Poly1305 as Aead, KeyInit, Nonce, Tag};
-use collections::bytes::{Cursor, Slice};
+use collections::bytes::Slice;
 use log::warn;
 use stakker::Core;
 use utils::bytes;
@@ -13,6 +13,7 @@ use super::window::Window;
 use crate::mac::Mac1;
 use crate::noise::Chain;
 use crate::packet::{self, Data};
+use crate::Packet;
 
 pub const REKEY_AFTER_MESSAGES: u64 = 2u64.pow(60);
 pub const REJECT_AFTER_MESSAGES: u64 = u64::MAX - 2u64.pow(13);
@@ -106,7 +107,7 @@ impl Tunnel {
 	}
 
 	/// Returns whether a rekey is needed. Assumes is_send_expired has been verified to be false.
-	pub fn send<A>(&mut self, cx: &mut Core<A>, buf: Cursor, f: impl FnOnce(Cursor)) -> bool {
+	pub fn send<A>(&mut self, cx: &mut Core<A>, buf: &mut Packet) -> bool {
 		let elapsed = cx.now() - self.recv.time;
 
 		let ctr = self.sctr;
@@ -114,13 +115,20 @@ impl Tunnel {
 
 		let rekey = (self.role == Role::Initiator && elapsed >= REKEY_AFTER_TIME) || ctr >= REKEY_AFTER_MESSAGES;
 
-		let mut buf = buf.push(&Data { tag: packet::Tag::DATA, idx: self.sidx, ctr });
+		// Pad the data with 0s.
+		let mut data = buf.cursor();
+		data.pad_to(16);
+		// Get the final payload length.
+		let len = data.pivot();
 
-		f(buf.rlim(16));
-		buf.pad_to(16);
-
-		let (mut data, tag): (_, &mut Tag) = buf.rsplit();
-
+		// Push the packet header.
+		let mut cur = buf.inner.cursor();
+		let mut cur = cur.push(&Data { tag: packet::Tag::DATA, idx: self.sidx, ctr });
+		// Skip the payload, which has already been filled.
+		cur.advance(len);
+		// Split off the AEAD tag from the end of the payload.
+		let (mut data, tag): (_, &mut Tag) = cur.rsplit();
+		// Encrypt the packet.
 		*tag = self
 			.send
 			.encrypt_in_place_detached(&nonce(ctr), &[], &mut data)

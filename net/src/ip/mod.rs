@@ -19,7 +19,6 @@ pub use checksum::Checksum;
 
 use crate::App;
 
-#[derive(Clone, Copy)]
 pub struct Interface {
 	v4: Ipv4Addr,
 	v6: Ipv6Addr,
@@ -63,20 +62,19 @@ impl<A: App> crate::Interface<A> {
 		};
 	}
 
-	pub(crate) fn write(&mut self, cx: &mut Core<A>, protocol: Protocol, addr: IpAddr, tos: ToS, f: impl FnOnce(Cursor) + 'static) {
-		let ip = self.ip;
+	pub(crate) fn write(&mut self, cx: &mut Core<A>, protocol: Protocol, addr: IpAddr, tos: ToS, f: impl FnOnce(Cursor)) {
+		let mut buf = self.link.buf();
+		let mut cur = buf.cursor();
+
+		match addr {
+			IpAddr::V4(addr) => self.ip.write_v4(cur, protocol, addr, tos, f),
+			IpAddr::V6(addr) => self.ip.write_v6(cur, protocol, addr, tos, f),
+		}
+
 		#[cfg(feature = "pcap")]
-		let pcap = self.pcap.clone();
+		let _ = self.pcap.log(&buf[..buf.pivot()]);
 
-		self.link.write(cx, move |mut buf: Cursor<'_>| {
-			match addr {
-				IpAddr::V4(addr) => ip.write_v4(buf.fork(), protocol, addr, tos, f),
-				IpAddr::V6(addr) => ip.write_v6(buf.fork(), protocol, addr, tos, f),
-			}
-
-			#[cfg(feature = "pcap")]
-			let _ = pcap.log(&buf[..buf.pivot()]);
-		});
+		self.link.write(cx, buf);
 	}
 
 	pub(crate) fn handle(app: &mut A, cx: &mut Core<A>, proto: Protocol, addr: IpAddr, tos: ToS, buf: Slice) {

@@ -34,7 +34,7 @@ pub struct Resolver<A: 'static> {
 	in_flight: HashMap<u16, Entry<A>>,
 }
 
-impl<A: App + 'static> Resolver<A> {
+impl<A: App> Resolver<A> {
 	pub fn init(primary: IpAddr) -> Self {
 		Self { primary, in_flight: HashMap::new() }
 	}
