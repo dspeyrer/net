@@ -65,7 +65,7 @@ macro_rules! validate_packet_size {
 	}};
 }
 
-pub struct Wireguard<A: 'static> {
+pub struct Wireguard<A> {
 	interface: Interface,
 	peers: Map<Peer, 1>,
 	io: runtime::State<A>,

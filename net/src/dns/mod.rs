@@ -18,7 +18,7 @@ const TIMEOUT: Duration = Duration::from_secs(10);
 const TY_A: u16 = 1;
 const CLASS_IN: u16 = 1;
 
-struct Entry<A: 'static> {
+struct Entry<A> {
 	/// The callback for the resolved IP address
 	ret: Box<dyn FnOnce(&mut A, &mut Core<A>, Ipv4Addr)>,
 	/// The timer key of the retry callback for this request
@@ -27,7 +27,7 @@ struct Entry<A: 'static> {
 	server: IpAddr,
 }
 
-pub struct Resolver<A: 'static> {
+pub struct Resolver<A> {
 	/// The address of the primary DNS server
 	primary: IpAddr,
 	/// In-flight DNS requests and their corresponding callbacks

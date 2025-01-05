@@ -12,7 +12,7 @@ pub trait App: Sized {
 	fn io(&mut self) -> &mut State<Self>;
 }
 
-pub fn exec<A: App + 'static>(f: impl FnOnce(&mut Core<A>, State<A>) -> A) -> Result {
+pub fn exec<A: App>(f: impl FnOnce(&mut Core<A>, State<A>) -> A) -> Result {
 	// Set the global logger.
 	crate::log_init();
 

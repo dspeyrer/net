@@ -92,7 +92,7 @@ fn recv(fd: RawFd, buf: &mut Slice) -> Result<bool> {
 	}
 }
 
-pub struct State<A: 'static> {
+pub struct State<A> {
 	fds: Vec<Poll>,
 	entries: Vec<Entry<A>>,
 
@@ -108,7 +108,7 @@ pub struct State<A: 'static> {
 	tout: Duration,
 }
 
-impl<A: App + 'static> State<A> {
+impl<A: App> State<A> {
 	fn new() -> Self {
 		Self {
 			fds: Vec::new(),
@@ -205,7 +205,7 @@ impl<A> Drop for State<A> {
 	}
 }
 
-struct Entry<A: 'static> {
+struct Entry<A> {
 	cb: Option<Box<dyn FnMut(&mut A, &mut Core<A>, Slice)>>,
 	queue: VecDeque<Buf>,
 }

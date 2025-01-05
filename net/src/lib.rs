@@ -17,7 +17,7 @@ pub mod udp;
 
 pub use ip::SocketAddr;
 
-pub struct Interface<A: 'static> {
+pub struct Interface<A> {
 	link: Wireguard<A>,
 
 	#[cfg(feature = "pcap")]
