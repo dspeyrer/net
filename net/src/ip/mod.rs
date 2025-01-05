@@ -5,7 +5,7 @@ use std::net::SocketAddrV4;
 use bilge::prelude::*;
 use collections::bytes::{Cursor, Slice};
 use log::warn;
-use stakker::Core;
+use runtime::Core;
 use utils::bytes::{self, Cast};
 
 mod checksum;

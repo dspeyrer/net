@@ -7,7 +7,7 @@ use std::ops::{Add, Sub};
 
 use bilge::prelude::*;
 use collections::bytes::Slice;
-use stakker::Core;
+use runtime::Core;
 use utils::bytes::Cast;
 use utils::endian::{u16be, u32be, u64be, BigEndian};
 

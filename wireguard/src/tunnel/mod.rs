@@ -6,7 +6,7 @@ use std::net::UdpSocket;
 
 use log::{info, warn};
 use runtime::Io;
-use stakker::Core;
+use runtime::Core;
 use utils::error::*;
 mod timers;
 use collections::bytes::Slice;

@@ -14,7 +14,7 @@ use collections::bytes::{Buf, Cursor, Slice};
 use collections::map::{Index, Map};
 use log::{error, info, warn};
 use runtime::Io;
-use stakker::Core;
+use runtime::Core;
 use tunnel::{Interface, Peer};
 use utils::bytes;
 use utils::error::*;

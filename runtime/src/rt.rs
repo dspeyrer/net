@@ -1,9 +1,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Instant, SystemTime};
 
-use stakker::Core;
 use utils::error::Result;
 
+use crate::Core;
 use crate::State;
 
 static EXIT: AtomicBool = AtomicBool::new(false);

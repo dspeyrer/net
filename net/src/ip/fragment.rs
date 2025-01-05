@@ -5,7 +5,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
 use collections::bytes::Slice;
-use stakker::Core;
+use runtime::Core;
 use utils::error::*;
 
 use super::{DiffServ, Protocol, ToS, ECN};

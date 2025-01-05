@@ -4,7 +4,7 @@ use core::net::{Ipv4Addr, Ipv6Addr};
 use std::net::IpAddr;
 
 use collections::bytes::Slice;
-use stakker::Core;
+use runtime::Core;
 use wireguard::Wireguard;
 
 extern crate alloc;

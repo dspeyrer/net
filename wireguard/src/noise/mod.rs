@@ -8,7 +8,7 @@ use collections::map::Map;
 pub use hash::Hash;
 use log::warn;
 use runtime::time;
-use stakker::Core;
+use runtime::Core;
 use tai64::Tai64N;
 use utils::error::*;
 use x25519_dalek::{PublicKey, StaticSecret as SecretKey};

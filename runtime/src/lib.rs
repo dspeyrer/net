@@ -6,8 +6,8 @@ use std::io::{self, ErrorKind};
 
 use collections::bytes::{Buf, Slice};
 use log::error;
-use stakker::Core;
 
+mod cx;
 mod logger;
 mod rt;
 
@@ -16,6 +16,7 @@ pub use logger::init as log_init;
 pub mod time;
 
 pub use rt::*;
+pub use cx::*;
 
 #[cfg(target_family = "unix")]
 mod sys {

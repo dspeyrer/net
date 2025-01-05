@@ -7,7 +7,6 @@ edition = "2021"
 utils = { path = "../utils" }
 collections = { path = "../collections" }
 
-stakker = { path = "../../stakker" }
 log = "0.4.21"
 ctrlc = "3.4.4"
 nu-ansi-term = "0.50.1"

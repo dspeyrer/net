@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use collections::map::Index;
 use log::{debug, info, trace};
 use rand::Rng;
-use stakker::{Core, FixedTimerKey, MaxTimerKey};
+use runtime::{Core, FixedTimerKey, MaxTimerKey};
 
 use crate::App;
 

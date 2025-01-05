@@ -4,7 +4,7 @@ use chacha20poly1305::aead::AeadInPlace;
 use chacha20poly1305::{ChaCha20Poly1305 as Aead, KeyInit, Nonce, Tag};
 use collections::bytes::Slice;
 use log::warn;
-use stakker::Core;
+use runtime::Core;
 use utils::bytes;
 use utils::error::*;
 

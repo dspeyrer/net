@@ -17,4 +17,3 @@ rand = "0.8.5"
 base64 = "0.22.1"
 log = "0.4.21"
 generic-array = "0.14.7"
-stakker = { path = "../../stakker" }

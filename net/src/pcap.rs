@@ -7,7 +7,7 @@ use std::time::{Duration, SystemTime};
 
 use log::warn;
 use runtime::time;
-use stakker::Core;
+use runtime::Core;
 use utils::bytes;
 use utils::bytes::Cast;
 use utils::error::*;

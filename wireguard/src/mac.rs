@@ -9,7 +9,7 @@ use chacha20poly1305::aead::AeadInPlace;
 use chacha20poly1305::{Tag, XChaCha20Poly1305 as XAead};
 use collections::bytes::Cursor;
 use log::warn;
-use stakker::Core;
+use runtime::Core;
 use utils::error::*;
 
 use crate::noise::A32;

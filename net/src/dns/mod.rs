@@ -6,7 +6,7 @@ use bilge::prelude::*;
 use collections::bytes::Slice;
 use log::{info, warn};
 use rand::Rng;
-use stakker::{Core, FixedTimerKey};
+use runtime::{Core, FixedTimerKey};
 use utils::bytes::Cast;
 use utils::endian::{u16be, u32be, BigEndian};
 

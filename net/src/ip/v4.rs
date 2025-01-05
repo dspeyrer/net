@@ -4,7 +4,7 @@ use core::net::{IpAddr, Ipv4Addr};
 use bilge::prelude::*;
 use collections::bytes::{Cursor, Slice};
 use log::warn;
-use stakker::Core;
+use runtime::Core;
 use utils::bytes::{self, Cast};
 use utils::endian::{u16be, BigEndian};
 

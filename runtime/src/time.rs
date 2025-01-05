@@ -1,12 +1,12 @@
 use std::time::{Duration, SystemTime};
 
-pub fn elapsed<A>(core: &stakker::Core<A>) -> Duration {
+pub fn elapsed<A>(core: &crate::Core<A>) -> Duration {
 	// Get the duration that has passed since the runtime was initialised.
 	core.now() - core.start_instant()
 }
 
 /// Get the current system time.
-pub fn system<A>(core: &stakker::Core<A>) -> SystemTime {
+pub fn system<A>(core: &crate::Core<A>) -> SystemTime {
 	// Get the system time of initialisation of the runtime.
 	let time = core.systime();
 	// Simulate the current system time using the monotonic clock.
@@ -14,7 +14,7 @@ pub fn system<A>(core: &stakker::Core<A>) -> SystemTime {
 }
 
 /// Get the UNIX time in seconds.
-pub fn unix<A>(core: &stakker::Core<A>) -> u32 {
+pub fn unix<A>(core: &crate::Core<A>) -> u32 {
 	// Get the system time.
 	let time = system(core);
 

@@ -3,7 +3,7 @@ use core::net::IpAddr;
 
 use collections::bytes::{Cursor, Slice};
 use log::warn;
-use stakker::Core;
+use runtime::Core;
 use utils::bytes::{self, Cast};
 use utils::endian::u16be;
 use utils::error::*;
