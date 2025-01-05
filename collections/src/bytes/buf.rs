@@ -22,10 +22,7 @@ impl Buf {
 
 	/// Get a write cursor into the buffer.
 	pub fn cursor(&mut self) -> Cursor {
-		Cursor {
-			slice: &mut self.bytes,
-			pivot: &mut self.filled,
-		}
+		Cursor { slice: &mut self.bytes, pivot: &mut self.filled }
 	}
 
 	/// Gets the number of bytes which have been filled.

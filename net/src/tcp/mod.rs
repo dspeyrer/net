@@ -299,7 +299,7 @@ impl<A: App> crate::Interface<A> {
 				// If the ACK bit is on,
 				// <SEQ=SEG.ACK><CTL=RST>
 			}
-			_ => todo!()
+			_ => todo!(),
 		}
 	}
 }

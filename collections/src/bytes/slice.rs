@@ -1,14 +1,11 @@
 use core::cell::Cell;
-use core::mem::size_of;
+use core::mem::{align_of, size_of};
 use core::ptr::NonNull;
 use core::slice;
+use std::alloc::{self, Layout};
 use std::ops::{Deref, DerefMut};
 
 use utils::bytes::{self, Cast};
-
-use core::mem::align_of;
-use std::alloc::{self, Layout};
-
 
 /// Get the layout required to represent bytes of the specified length
 unsafe fn layout(len: usize) -> Layout {
@@ -19,7 +16,6 @@ struct Meta {
 	/// The number of bytes in this allocation after the end of the [Meta] section.
 	len: usize,
 }
-
 
 pub struct Slice {
 	/// A pointer to the allocation base
