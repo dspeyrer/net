@@ -6,8 +6,7 @@ use std::mem::size_of;
 use std::time::{Duration, SystemTime};
 
 use log::warn;
-use runtime::time;
-use runtime::Core;
+use runtime::{time, Core};
 use utils::bytes;
 use utils::bytes::Cast;
 use utils::error::*;

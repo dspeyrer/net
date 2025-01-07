@@ -5,8 +5,7 @@ use core::mem;
 use std::net::UdpSocket;
 
 use log::{info, warn};
-use runtime::Io;
-use runtime::Core;
+use runtime::{Core, Io};
 use utils::error::*;
 mod timers;
 use collections::bytes::Slice;

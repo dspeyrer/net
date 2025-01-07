@@ -3,8 +3,7 @@ use std::time::{Instant, SystemTime};
 
 use utils::error::Result;
 
-use crate::Core;
-use crate::State;
+use crate::{Core, State};
 
 static EXIT: AtomicBool = AtomicBool::new(false);
 

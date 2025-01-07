@@ -326,7 +326,6 @@ dependencies = [
  "log",
  "rand",
  "runtime",
- "stakker",
  "utils",
  "wireguard",
 ]
@@ -462,7 +461,6 @@ dependencies = [
  "libc",
  "log",
  "nu-ansi-term",
- "stakker",
  "utils",
  "windows-sys",
 ]
@@ -510,10 +508,6 @@ checksum = "8f92a496fb766b417c996b9c5e57daf2f7ad3b0bebe1ccfca4856390e3d3bb67"
 dependencies = [
  "autocfg",
 ]
-
-[[package]]
-name = "stakker"
-version = "0.2.11"
 
 [[package]]
 name = "subtle"
@@ -668,7 +662,6 @@ dependencies = [
  "log",
  "rand",
  "runtime",
- "stakker",
  "tai64",
  "utils",
  "x25519-dalek",
