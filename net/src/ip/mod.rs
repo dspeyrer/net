@@ -19,6 +19,25 @@ pub use checksum::Checksum;
 
 use crate::App;
 
+pub struct Packet {
+	/// The inner packet.
+	inner: wireguard::Packet,
+	/// The size of the packet header.
+	header: usize
+}
+
+impl Packet {
+	/// Get a write cursor for the packet.
+	pub fn cursor(&mut self) -> Cursor {
+		// Get the inner cursor.
+		let cur = self.inner.cursor();
+		// Split off the header bytes.
+		let (_, cur): (&mut [u8], _) = cur.split_n(self.header);
+		// Return the subcursor.
+		cur
+	}
+}
+
 pub struct Interface {
 	v4: Ipv4Addr,
 	v6: Ipv6Addr,
@@ -62,19 +81,39 @@ impl<A: App> crate::Interface<A> {
 		};
 	}
 
-	pub(crate) fn write(&mut self, cx: &mut Core<A>, protocol: Protocol, addr: IpAddr, tos: ToS, f: impl FnOnce(Cursor)) {
+	pub(crate) fn buf(&mut self, protocol: Protocol, addr: IpAddr, tos: ToS) -> Packet {
 		let mut buf = self.link.buf();
+
 		let mut cur = buf.cursor();
 
 		match addr {
-			IpAddr::V4(addr) => self.ip.write_v4(cur.fork(), protocol, addr, tos, f),
-			IpAddr::V6(addr) => self.ip.write_v6(cur.fork(), protocol, addr, tos, f),
+			IpAddr::V4(addr) => self.ip.init_v4(cur.fork(), protocol, addr, tos),
+			IpAddr::V6(addr) => self.ip.init_v6(cur.fork(), protocol, addr, tos),
+		};
+
+		let header = cur.pivot();
+
+		Packet {
+			inner: buf,
+			header,
 		}
+	}
+
+	pub(crate) fn write(&mut self, cx: &mut Core<A>, mut buf: Packet) {
+		let cur = buf.inner.cursor();
+
+		let ver = bytes::cast::<Prefix, _>(&*cur).ver();
+
+		let _ = match ver {
+			Version::V4 => Interface::finalise_v4(cur),
+			Version::V6 => Interface::finalise_v6(cur),
+			Version::Unknown => unreachable!(),
+		};
 
 		#[cfg(feature = "pcap")]
 		let _ = self.pcap.log(cx, &cur[..cur.pivot()]);
 
-		self.link.write(cx, buf);
+		self.link.write(cx, buf.inner);
 	}
 
 	pub(crate) fn handle(app: &mut A, cx: &mut Core<A>, proto: Protocol, addr: IpAddr, tos: ToS, buf: Slice) {

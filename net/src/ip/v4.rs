@@ -110,8 +110,8 @@ impl<A: App> crate::Interface<A> {
 }
 
 impl Interface {
-	pub fn write_v4(&self, buf: Cursor, protocol: Protocol, addr: Ipv4Addr, tos: ToS, f: impl FnOnce(Cursor)) {
-		let (header, mut buf): (&mut Header, _) = buf.split();
+	pub fn init_v4(&self, cur: Cursor, protocol: Protocol, addr: Ipv4Addr, tos: ToS) {
+		let header: &mut Header = cur.cast();
 
 		header.ver = Meta::new(u4::new(5), V4);
 		header.tos = tos;
@@ -121,10 +121,14 @@ impl Interface {
 
 		header.src = self.v4;
 		header.dst = addr;
+	}
 
-		f(buf.fork());
+	pub fn finalise_v4(mut cur: Cursor) {
+		let hlen = cur.pivot();
 
-		header.len = ((size_of::<Header>() + buf.pivot()) as u16).into();
+		let header: &mut Header = bytes::cast_mut(&mut *cur);
+
+		header.len = (hlen as u16).into();
 		header.frg = Fragment::new(u13::new(0), false, true, 0).into();
 
 		header.csm = Checksum::of(bytes::as_slice(header)).end();

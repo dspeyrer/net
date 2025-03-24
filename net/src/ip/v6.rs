@@ -62,8 +62,8 @@ impl<A: App> crate::Interface<A> {
 }
 
 impl Interface {
-	pub fn write_v6(&self, buf: Cursor, protocol: Protocol, addr: Ipv6Addr, tos: ToS, f: impl FnOnce(Cursor)) {
-		let (header, mut buf): (&mut Header, _) = buf.split();
+	pub fn init_v6(&self, cur: Cursor, protocol: Protocol, addr: Ipv6Addr, tos: ToS) {
+		let header: &mut Header = cur.cast();
 
 		header.ver = Meta::new(u20::MIN, tos, V6).into();
 
@@ -72,9 +72,11 @@ impl Interface {
 
 		header.src = self.v6;
 		header.dst = addr;
+	}
 
-		f(buf.fork());
-
-		header.len = ((size_of::<Header>() + buf.pivot()) as u16).into();
+	pub fn finalise_v6(cur: Cursor) {
+		let hlen = cur.pivot();
+		let header: &mut Header = cur.cast();
+		header.len = (hlen as u16).into();
 	}
 }

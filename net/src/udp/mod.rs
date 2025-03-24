@@ -69,26 +69,29 @@ impl<A: App> Interface<A> {
 
 		let mut csum = self.ip.pseudo_checksum(Udp, addr);
 
-		self.write(cx, Udp, addr, tos, move |mut buf| {
-			{
-				let (header, buf): (&mut Header, _) = buf.fork().split();
+		let mut buf = self.buf(Udp, addr, tos);
+		let mut cur = buf.cursor();
 
-				header.src = src.into();
-				header.dst = port.into();
-				header.csum = [0, 0];
+		{
+			let (header, buf): (&mut Header, _) = cur.fork().split();
 
-				f(buf);
-			}
+			header.src = src.into();
+			header.dst = port.into();
+			header.csum = [0, 0];
 
-			let pivot = buf.pivot();
+			f(buf);
+		}
 
-			let len: u16 = pivot.try_into().unwrap_or(0);
-			bytes::cast_mut::<Header, _>(&mut *buf).len = len.into();
+		let pivot = cur.pivot();
 
-			csum.push(&len.to_be_bytes());
-			csum.push(&buf[..pivot]);
+		let len: u16 = pivot.try_into().unwrap_or(0);
+		bytes::cast_mut::<Header, _>(&mut *cur).len = len.into();
 
-			bytes::cast_mut::<Header, _>(&mut *buf).csum = csum.end();
-		});
+		csum.push(&len.to_be_bytes());
+		csum.push(&cur[..pivot]);
+
+		bytes::cast_mut::<Header, _>(&mut *cur).csum = csum.end();
+
+		self.write(cx, buf);
 	}
 }

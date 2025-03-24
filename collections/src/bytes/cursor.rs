@@ -58,6 +58,22 @@ impl<'a> Cursor<'a> {
 		(Cursor { slice: l, pivot: self.pivot }, bytes::cast_mut(r))
 	}
 
+	/// Splits off a reference to a type, returning the rest, and advancing the pivot to the start of the new buffer.
+	#[inline]
+	pub fn split_n<T: Cast>(self, n: usize) -> (&'a mut [T], Self) {
+		let (l, r) = self.slice.split_at_mut(size_of::<T>() * n);
+		*self.pivot = r.as_ptr() as usize;
+		(bytes::as_slice_mut(l), Self { slice: r, pivot: self.pivot })
+	}
+
+	/// Splits off an instance of a type after the pivot point, returning the preceding buffer, and advancing the pivot to the end of the current buffer.
+	#[inline]
+	pub fn rsplit_n<T: Cast>(self, n: usize) -> (Self, &'a mut [T]) {
+		let (l, r) = self.slice.split_at_mut(self.pivot());
+		*self.pivot = r.as_ptr() as usize + size_of::<T>();
+		(Cursor { slice: l, pivot: self.pivot }, bytes::as_slice_mut(r))
+	}
+
 	/// Returns a cursor limited to `len` bytes.
 	#[inline]
 	pub fn lim(self, len: usize) -> Self {
