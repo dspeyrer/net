@@ -9,8 +9,24 @@ use utils::endian::u16be;
 use utils::error::*;
 
 use crate::ip::Protocol::Udp;
-use crate::ip::{self, SocketAddr, ToS};
+use crate::ip::{self, Checksum, SocketAddr, ToS};
 use crate::{dns, App, Interface};
+
+pub struct Packet {
+	inner: ip::Packet,
+	csum: Checksum,
+}
+
+impl Packet {
+	pub fn cursor(&mut self) -> Cursor {
+		// Get a cursor to the underlying buffer.
+		let cur = self.inner.cursor();
+		// Split off the packet header.
+		let (_, cur): (&mut Header, _) = cur.split();
+		// Return the cursor to the payload section of the packet.
+		cur
+	}
+}
 
 #[derive(Cast)]
 #[repr(C)]
@@ -64,34 +80,36 @@ impl<A: App> Interface<A> {
 		}
 	}
 
-	pub fn write_udp(&mut self, cx: &mut Core<A>, src: u16, SocketAddr { addr, port }: SocketAddr, f: impl FnOnce(Cursor)) {
+	pub fn buf_udp(&mut self, src: u16, SocketAddr { addr, port }: SocketAddr) -> Packet {
 		let tos = ToS::new(ip::ECN::NotECT, ip::DiffServ::Default);
 
-		let mut csum = self.ip.pseudo_checksum(Udp, addr);
+		let csum = self.ip.pseudo_checksum(Udp, addr);
 
 		let mut buf = self.buf(Udp, addr, tos);
-		let mut cur = buf.cursor();
+		let cur = buf.cursor();
 
-		{
-			let (header, buf): (&mut Header, _) = cur.fork().split();
+		let header: &mut Header = cur.cast();
 
-			header.src = src.into();
-			header.dst = port.into();
-			header.csum = [0, 0];
+		header.src = src.into();
+		header.dst = port.into();
+		header.csum = [0, 0];
 
-			f(buf);
-		}
+		Packet { inner: buf, csum }
+	}
+
+	pub fn write_udp(&mut self, cx: &mut Core<A>, mut buf: Packet) {
+		let mut cur = buf.inner.cursor();
 
 		let pivot = cur.pivot();
 
 		let len: u16 = pivot.try_into().unwrap_or(0);
 		bytes::cast_mut::<Header, _>(&mut *cur).len = len.into();
 
-		csum.push(&len.to_be_bytes());
-		csum.push(&cur[..pivot]);
+		buf.csum.push(&len.to_be_bytes());
+		buf.csum.push(&cur[..pivot]);
 
-		bytes::cast_mut::<Header, _>(&mut *cur).csum = csum.end();
+		bytes::cast_mut::<Header, _>(&mut *cur).csum = buf.csum.end();
 
-		self.write(cx, buf);
+		self.write(cx, buf.inner);
 	}
 }

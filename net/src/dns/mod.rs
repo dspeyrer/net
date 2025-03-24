@@ -54,46 +54,50 @@ impl<A: App> Resolver<A> {
 		info!("Querying DNS server {} for {} (0x{:x})", server, name, id);
 
 		// Query port 53 of the server
-		net.write_udp(cx, A::DNS_PORT, SocketAddr { addr: server, port: 53 }, |buf| {
-			let (header, mut buf): (&mut Header, _) = buf.split();
+		let mut buf = net.buf_udp(A::DNS_PORT, SocketAddr { addr: server, port: 53 });
+		let cur = buf.cursor();
 
-			// ID from parameters so that it can be duplicated between requests
-			header.id = id;
+		let (header, mut cur): (&mut Header, _) = cur.split();
 
-			// Generic query flags
-			header.flags = Flags::new(Rcode::Ok, u3::new(0), false, true, false, false, Opcode::Query, false).into();
+		// ID from parameters so that it can be duplicated between requests
+		header.id = id;
 
-			// Asking one question, with no resource records
-			header.qdcount = 1.into();
-			header.ancount = 0.into();
-			header.nscount = 0.into();
-			header.arcount = 0.into();
+		// Generic query flags
+		header.flags = Flags::new(Rcode::Ok, u3::new(0), false, true, false, false, Opcode::Query, false).into();
 
-			for n in name.split(".") {
-				let bytes = n.as_bytes();
+		// Asking one question, with no resource records
+		header.qdcount = 1.into();
+		header.ancount = 0.into();
+		header.nscount = 0.into();
+		header.arcount = 0.into();
 
-				assert!(bytes.len() <= 63);
+		for n in name.split(".") {
+			let bytes = n.as_bytes();
 
-				let len: u8 = bytes.len() as _;
+			assert!(bytes.len() <= 63);
 
-				// Append a length octet
-				buf = buf.push(&len);
-				// Push the name bytes
-				buf = buf.push(bytes);
-			}
+			let len: u8 = bytes.len() as _;
 
-			// Zero-length root label for name
-			buf = buf.push(&0u8);
+			// Append a length octet
+			cur = cur.push(&len);
+			// Push the name bytes
+			cur = cur.push(bytes);
+		}
 
-			// Domain names must be less than or equal to 255 octets
-			assert!(buf.pivot() <= 255);
+		// Zero-length root label for name
+		cur = cur.push(&0u8);
 
-			// QTYPE
-			buf = buf.push(&BigEndian::from(TY_A));
+		// Domain names must be less than or equal to 255 octets
+		assert!(cur.pivot() <= 255);
 
-			// QCLASS
-			buf.push(&BigEndian::from(CLASS_IN));
-		});
+		// QTYPE
+		cur = cur.push(&BigEndian::from(TY_A));
+
+		// QCLASS
+		cur.push(&BigEndian::from(CLASS_IN));
+
+		// Write the packet to the network.
+		net.write_udp(cx, buf);
 
 		cx.after(TIMEOUT, move |app, cx| {
 			let net = app.net();
