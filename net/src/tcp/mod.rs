@@ -8,7 +8,7 @@ use std::ops::{Add, Sub};
 use bilge::prelude::*;
 use collections::bytes::Slice;
 use runtime::Core;
-use utils::bytes::Cast;
+use utils::bytes::{self, Cast};
 use utils::endian::{u16be, u32be, u64be, BigEndian};
 
 use crate::ip::Protocol::Tcp;
@@ -105,10 +105,12 @@ struct Header {
 	/// The number of data octets beginning with the one indicated in the acknowledgment field that the sender of this segment is willing to accept. The value is shifted when the window scaling extension is used [47]. The window size MUST be treated as an unsigned number, or else large window sizes will appear like negative windows and TCP will not work (MUST-1). It is RECOMMENDED that implementations will reserve 32-bit fields for the send and receive window sizes in the connection record and do all window computations with 32 bits (REC-1).
 	win: u64be,
 	// The checksum field is the 16-bit ones' complement of the ones' complement sum of all 16-bit words in the header and text.
-	csm: u16be,
+	csm: [u8; 2],
 	/// This field communicates the current value of the urgent pointer as a positive offset from the sequence number in this segment. The urgent pointer points to the sequence number of the octet following the urgent data. This field is only to be interpreted in segments with the URG control bit set.
 	urg: u16be,
 }
+
+const HEADER_BASE_OFF: u4 = u4::new((size_of::<Header>() / size_of::<u32>()) as u8);
 
 enum OptKind {
 	/// End of Option List Option. This option code indicates the end of the option list. This might not coincide with the end of the TCP header according to the Data Offset field. This is used at the end of all options, not the end of each option, and need only be used if the end of the options would not otherwise coincide with the end of the TCP header.
@@ -277,6 +279,8 @@ impl<A: App> crate::Interface<A> {
 
 		let ctl = packet.ctl.get();
 
+		let data_len = buf.len() - ctl.off().value() as usize;
+
 		match state {
 			State::Closed => {
 				// If the state is CLOSED (i.e., TCB does not exist), then all
@@ -287,17 +291,54 @@ impl<A: App> crate::Interface<A> {
 					return;
 				}
 
+				let mut res = net.buf(Tcp, addr, tos);
+				let mut cur = res.cursor();
+
+				let hdr = cur.fork().cast::<Header>();
+
+				hdr.src = packet.dst;
+				hdr.dst = packet.src;
+
+				hdr.win = 0.into();
+				hdr.urg = 0.into();
+				hdr.csm = [0; 2];
+
+				let ack;
+
 				// An incoming segment not containing a RST causes a RST to be
 				// sent in response. The acknowledgment and sequence field
 				// values are selected to make the reset sequence acceptable to
 				// the TCP endpoint that sent the offending segment.
-				todo!();
+				if ctl.ack() {
+					// If the ACK bit is on,
+					// <SEQ=SEG.ACK><CTL=RST>
+					hdr.seq = packet.ack;
+					hdr.ack = 0.into();
 
-				// If the ACK bit is off, sequence number zero is used,
-				// <SEQ=0><ACK=SEG.SEQ+SEG.LEN><CTL=RST,ACK>
+					ack = false;
+				} else {
+					// If the ACK bit is off, sequence number zero is used,
+					// <SEQ=0><ACK=SEG.SEQ+SEG.LEN><CTL=RST,ACK>
+					hdr.seq = 0.into();
+					hdr.ack = (packet.seq.get() + data_len as u32).into();
 
-				// If the ACK bit is on,
-				// <SEQ=SEG.ACK><CTL=RST>
+					ack = true;
+				}
+
+				hdr.ctl = Control::new(false, false, true, false, ack, false, false, false, HEADER_BASE_OFF).into();
+
+				// Evaluate the checksum.
+				let mut csm = net.ip.pseudo_checksum(Tcp, addr);
+
+				let tcp_len = cur.pivot();
+
+				csm.push(&tcp_len.to_be_bytes());
+				csm.push(&cur[..tcp_len]);
+
+				bytes::cast_mut::<Header, _>(&mut *cur).csm = csm.end();
+
+				// Send the packet.
+				net.write(cx, res);
 			}
 			_ => todo!(),
 		}
