@@ -1,3 +1,4 @@
+use core::cmp;
 use core::mem::size_of;
 use std::ops::{Deref, DerefMut};
 
@@ -42,11 +43,11 @@ impl<'a> Cursor<'a> {
 		bytes::cast_mut(self.slice)
 	}
 
-	/// Splits off a reference to a type, returning the rest, and advancing the pivot to the start of the new buffer.
+	/// Splits off a reference to a type, returning the rest, and advancing the pivot to the start of the new buffer if it is before it.
 	#[inline]
 	pub fn split<T: Cast>(self) -> (&'a mut T, Self) {
 		let (l, r) = self.slice.split_at_mut(size_of::<T>());
-		*self.pivot = r.as_ptr() as usize;
+		*self.pivot = cmp::max(r.as_ptr() as usize, *self.pivot);
 		(bytes::cast_mut(l), Self { slice: r, pivot: self.pivot })
 	}
 
@@ -58,11 +59,11 @@ impl<'a> Cursor<'a> {
 		(Cursor { slice: l, pivot: self.pivot }, bytes::cast_mut(r))
 	}
 
-	/// Splits off a reference to a type, returning the rest, and advancing the pivot to the start of the new buffer.
+	/// Splits off a reference to a type, returning the rest, and advancing the pivot to the start of the new buffer if it is before it.
 	#[inline]
 	pub fn split_n<T: Cast>(self, n: usize) -> (&'a mut [T], Self) {
 		let (l, r) = self.slice.split_at_mut(size_of::<T>() * n);
-		*self.pivot = r.as_ptr() as usize;
+		*self.pivot = cmp::max(r.as_ptr() as usize, *self.pivot);
 		(bytes::as_slice_mut(l), Self { slice: r, pivot: self.pivot })
 	}
 

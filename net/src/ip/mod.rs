@@ -23,7 +23,7 @@ pub struct Packet {
 	/// The inner packet.
 	inner: wireguard::Packet,
 	/// The size of the packet header.
-	header: usize
+	header: usize,
 }
 
 impl Packet {
@@ -93,20 +93,17 @@ impl<A: App> crate::Interface<A> {
 
 		let header = cur.pivot();
 
-		Packet {
-			inner: buf,
-			header,
-		}
+		Packet { inner: buf, header }
 	}
 
 	pub(crate) fn write(&mut self, cx: &mut Core<A>, mut buf: Packet) {
-		let cur = buf.inner.cursor();
+		let mut cur = buf.inner.cursor();
 
 		let ver = bytes::cast::<Prefix, _>(&*cur).ver();
 
 		let _ = match ver {
-			Version::V4 => Interface::finalise_v4(cur),
-			Version::V6 => Interface::finalise_v6(cur),
+			Version::V4 => Interface::finalise_v4(cur.fork()),
+			Version::V6 => Interface::finalise_v6(cur.fork()),
 			Version::Unknown => unreachable!(),
 		};
 
