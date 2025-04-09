@@ -130,10 +130,20 @@ impl<A: App> Resolver<A> {
 		assert!(flags.qr());
 
 		// Expect there to be one resource record, which corresponds to an answer
-		assert!(header.qdcount.get() == 1);
-		assert!(header.ancount.get() == 1);
-		assert!(header.nscount.get() == 0);
-		assert!(header.arcount.get() == 0);
+		assert_eq!(header.qdcount.get(), 1);
+
+		let ancount = header.ancount.get();
+
+		if ancount != 1 {
+			// Since we got a response, but we can't use it, clear the retry timer but do not call the callback.
+			cx.timer_del(entry.remove().retry);
+			log::warn!("Got DNS response for 0x{:x} with {} answers; ignoring.", header.id, ancount);
+
+			return;
+		}
+
+		assert_eq!(header.nscount.get(), 0);
+		assert_eq!(header.arcount.get(), 0);
 
 		macro_rules! skip_name {
 			() => {
