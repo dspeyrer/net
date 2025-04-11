@@ -41,19 +41,13 @@ impl Interface {
 		Self { key, pubkey, hash, mac, link }
 	}
 
-	pub fn handle_initiation<A: App>(
-		&mut self,
-		cx: &mut Core<A>,
-		io: &mut runtime::State<A>,
-		peers: &mut Map<Peer, 1>,
-		msg: &mut Initiation,
-	) -> Result {
+	pub fn handle_initiation<A: App>(&mut self, cx: &mut Core<A>, peers: &mut Map<Peer, 1>, msg: &mut Initiation) -> Result {
 		info!("Recieved initiation packet");
 
 		let idx = msg.idx;
 
 		let (state, peer) = ResponderHandshake::consume_initiation(peers, self, msg)?;
-		peer.create_response(cx, io, self, idx, state)
+		peer.create_response(cx, self, idx, state)
 	}
 }
 
@@ -100,11 +94,11 @@ impl Peer {
 		this
 	}
 
-	pub fn write<A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State<A>, wg: &Interface, mut buf: Packet, is_keepalive: bool) -> Result {
+	pub fn write<A: App>(&mut self, cx: &mut Core<A>, wg: &Interface, mut buf: Packet, is_keepalive: bool) -> Result {
 		let rekey = match &mut self.wheel.pair {
 			Some((_, ref mut tun)) if !tun.is_send_expired(cx) => {
 				let rekey = tun.send(cx, &mut buf);
-				wg.link.write(io, buf.inner)?;
+				wg.link.write(cx, buf.inner)?;
 
 				self.timers.send_data(cx, is_keepalive);
 				rekey
@@ -121,41 +115,34 @@ impl Peer {
 		};
 
 		if rekey {
-			self.rekey(cx, io, wg)?;
+			self.rekey(cx, wg)?;
 		};
 
 		Ok(())
 	}
 
-	fn rekey<A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State<A>, wg: &Interface) -> Result {
+	fn rekey<A: App>(&mut self, cx: &mut Core<A>, wg: &Interface) -> Result {
 		if !self.timers.is_rekeying() {
 			// Only send an initiation packet if there is not one queued already.
-			self.create_initiation(cx, io, wg)
+			self.create_initiation(cx, wg)
 		} else {
 			Ok(())
 		}
 	}
 
-	pub fn create_initiation<A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State<A>, wg: &Interface) -> Result {
-		self.wheel.sent = Some(self.hs.create_initiation(cx, io, wg)?);
+	pub fn create_initiation<A: App>(&mut self, cx: &mut Core<A>, wg: &Interface) -> Result {
+		self.wheel.sent = Some(self.hs.create_initiation(cx, wg)?);
 		self.timers.send_init(cx);
 		Ok(())
 	}
 
-	pub fn create_response<A: App>(
-		&mut self,
-		cx: &mut Core<A>,
-		io: &mut runtime::State<A>,
-		wg: &Interface,
-		idx: u32,
-		state: ResponderHandshake,
-	) -> Result {
-		self.wheel.next = Some((idx, self.hs.create_response(cx, io, wg, idx, state)?));
+	pub fn create_response<A: App>(&mut self, cx: &mut Core<A>, wg: &Interface, idx: u32, state: ResponderHandshake) -> Result {
+		self.wheel.next = Some((idx, self.hs.create_response(cx, wg, idx, state)?));
 		self.timers.send_resp(cx);
 		Ok(())
 	}
 
-	pub fn handle_response<A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State<A>, i: &Interface, msg: &mut Response) -> Result {
+	pub fn handle_response<A: App>(&mut self, cx: &mut Core<A>, i: &Interface, msg: &mut Response) -> Result {
 		info!("Recieved response packet for connection 0x{:x}", msg.rcv_idx);
 
 		let sent = self
@@ -172,13 +159,13 @@ impl Peer {
 		self.timers.recv_resp(cx);
 
 		for f in mem::take(&mut self.queue) {
-			self.write(cx, io, i, f, false)?;
+			self.write(cx, i, f, false)?;
 		}
 
 		Ok(())
 	}
 
-	pub fn handle_data<'a, A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State<A>, wg: &Interface, buf: &mut Slice) -> Result {
+	pub fn handle_data<'a, A: App>(&mut self, cx: &mut Core<A>, wg: &Interface, buf: &mut Slice) -> Result {
 		let msg: &Data = buf.split();
 
 		match &mut self.wheel {
@@ -186,7 +173,7 @@ impl Peer {
 				let rekey = k.open(cx, msg.ctr, buf)?;
 
 				if rekey {
-					self.rekey(cx, io, wg)?
+					self.rekey(cx, wg)?
 				};
 				// Only update the timers if the data packet was recieved on the main connection.
 				self.timers.recv_data(cx, buf.len() == 0);
@@ -202,7 +189,7 @@ impl Peer {
 				self.wheel.pair = Some((i, pair));
 
 				for f in mem::take(&mut self.queue) {
-					self.write(cx, io, wg, f, false)?;
+					self.write(cx, wg, f, false)?;
 				}
 			}
 			_ => return Err(warn!("No applicable recieve key found for Data packet")),
@@ -264,7 +251,7 @@ impl Noise {
 		Ok(())
 	}
 
-	fn create_initiation<A: App>(&mut self, cx: &mut Core<A>, io: &mut runtime::State<A>, wg: &Interface) -> Result<SentHandshake> {
+	fn create_initiation<A: App>(&mut self, cx: &mut Core<A>, wg: &Interface) -> Result<SentHandshake> {
 		let mut vec = wg.link.buf();
 		let mut buf = vec.cursor();
 
@@ -279,19 +266,12 @@ impl Noise {
 
 		log::info!("Sent initiation packet 0x{:x}", idx);
 
-		wg.link.write(io, vec)?;
+		wg.link.write(cx, vec)?;
 
 		Ok(SentHandshake { state, idx, mac })
 	}
 
-	fn create_response<A: App>(
-		&mut self,
-		cx: &mut Core<A>,
-		io: &mut runtime::State<A>,
-		wg: &Interface,
-		rcv_idx: u32,
-		state: ResponderHandshake,
-	) -> Result<Next> {
+	fn create_response<A: App>(&mut self, cx: &mut Core<A>, wg: &Interface, rcv_idx: u32, state: ResponderHandshake) -> Result<Next> {
 		let mut vec = wg.link.buf();
 		let mut buf = vec.cursor();
 
@@ -308,7 +288,7 @@ impl Noise {
 		let chain = state.create_response(self, res);
 		let mac = self.mac.write(cx, buf);
 
-		wg.link.write(io, vec)?;
+		wg.link.write(cx, vec)?;
 
 		Ok(Next::new(cx, chain, idx, mac))
 	}

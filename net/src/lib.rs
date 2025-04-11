@@ -18,7 +18,7 @@ pub mod udp;
 pub use ip::SocketAddr;
 
 pub struct Interface<A> {
-	link: Wireguard<A>,
+	link: Wireguard,
 
 	#[cfg(feature = "pcap")]
 	pcap: pcap::Writer,
@@ -41,7 +41,7 @@ pub trait App: wireguard::App + Sized {
 }
 
 impl<A: App> Interface<A> {
-	pub fn init(link: Wireguard<A>, v4: Ipv4Addr, v6: Ipv6Addr, dns: IpAddr) -> Self {
+	pub fn init(link: Wireguard, v4: Ipv4Addr, v6: Ipv6Addr, dns: IpAddr) -> Self {
 		Self {
 			link,
 
@@ -58,7 +58,7 @@ impl<A: App> Interface<A> {
 		}
 	}
 
-	pub fn wireguard(&mut self) -> &mut Wireguard<A> {
+	pub fn wireguard(&mut self) -> &mut Wireguard {
 		&mut self.link
 	}
 }

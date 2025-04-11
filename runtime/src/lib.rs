@@ -1,12 +1,5 @@
 extern crate alloc;
 
-use alloc::collections::VecDeque;
-use core::time::Duration;
-use std::io::ErrorKind;
-
-use collections::bytes::{Buf, Slice};
-use log::error;
-
 mod cx;
 mod io;
 mod logger;

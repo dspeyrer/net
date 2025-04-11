@@ -5,7 +5,7 @@ use std::io::{self, ErrorKind};
 use collections::bytes::{Buf, Slice};
 use log::error;
 
-use crate::{App, Core};
+use crate::Core;
 
 #[cfg(target_family = "unix")]
 mod sys {
@@ -82,7 +82,7 @@ fn recv(fd: RawFd, buf: &mut Slice) -> Result<bool> {
 	}
 }
 
-pub struct State<A> {
+pub(crate) struct State<A> {
 	fds: Vec<Poll>,
 	entries: Vec<Entry<A>>,
 
@@ -91,14 +91,14 @@ pub struct State<A> {
 	/// Total number of socket reads
 	read: u64,
 	/// Total poll wait time
-	pub(crate) wait: Duration,
+	pub wait: Duration,
 	/// Total execution time
-	pub(crate) exec: Duration,
+	pub exec: Duration,
 	/// Total requested timeout duration
 	tout: Duration,
 }
 
-impl<A: App> State<A> {
+impl<A> State<A> {
 	pub fn new() -> Self {
 		Self {
 			fds: Vec::new(),
@@ -139,7 +139,7 @@ impl<A: App> State<A> {
 
 	/// Execute I/O callbacks, returning whether any I/O reads occurred.
 	pub fn execute(app: &mut A, cx: &mut Core<A>, mut pending: u32) -> Result<bool> {
-		let mut this = app.io();
+		let mut this = cx.io();
 		let mut read = 0;
 
 		for idx in 0.. {
@@ -169,7 +169,7 @@ impl<A: App> State<A> {
 
 				Entry::flush_read(&mut cb, app, cx, fd, &mut read)?;
 
-				this = app.io();
+				this = cx.io();
 				entry = &mut this.entries[idx];
 
 				entry.cb = Some(cb);
@@ -234,9 +234,11 @@ pub struct Io<T: AsRawFd> {
 }
 
 impl<T: AsRawFd> Io<T> {
-	pub fn new<A: App>(state: &mut State<A>, inner: T, cb: Box<dyn FnMut(&mut A, &mut Core<A>, Slice)>) -> Self {
-		state.fds.push(Poll { fd: as_raw(&inner), events: POLLIN, revents: 0 });
-		state.entries.push(Entry { cb: Some(cb), queue: VecDeque::new() });
+	pub fn new<A>(cx: &mut Core<A>, inner: T, cb: Box<dyn FnMut(&mut A, &mut Core<A>, Slice)>) -> Self {
+		let io = cx.io();
+
+		io.fds.push(Poll { fd: as_raw(&inner), events: POLLIN, revents: 0 });
+		io.entries.push(Entry { cb: Some(cb), queue: VecDeque::new() });
 
 		Self { inner }
 	}
@@ -246,19 +248,23 @@ impl<T: AsRawFd> Io<T> {
 		Buf::zeroed(1500)
 	}
 
-	pub fn write<A: App>(&self, state: &mut State<A>, buf: Buf) -> Result {
+	pub fn write<A>(&self, cx: &mut Core<A>, buf: Buf) -> Result {
+		let io = cx.io();
+
 		if !send(as_raw(&self.inner), buf.filled())? {
-			let idx = state.idx_of(&self.inner);
-			state.entries[idx].queue.push_front(buf);
-			state.fds[idx].events |= POLLOUT;
+			let idx = io.idx_of(&self.inner);
+			io.entries[idx].queue.push_front(buf);
+			io.fds[idx].events |= POLLOUT;
 		}
 
 		Ok(())
 	}
 
-	pub fn unbind<A: App>(self, state: &mut State<A>) {
-		let idx = state.idx_of(&self.inner);
-		state.entries.swap_remove(idx);
-		state.fds.swap_remove(idx);
+	pub fn unbind<A>(self, cx: &mut Core<A>) {
+		let io = cx.io();
+
+		let idx = io.idx_of(&self.inner);
+		io.entries.swap_remove(idx);
+		io.fds.swap_remove(idx);
 	}
 }

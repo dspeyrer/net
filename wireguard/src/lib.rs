@@ -21,9 +21,8 @@ use x25519_dalek::PublicKey;
 
 use crate::packet::{Cookie, Data, Initiation, Response, MAC_LEN};
 
-pub trait App: Sized + runtime::App {
-	fn wireguard(&mut self) -> &mut Wireguard<Self>;
-
+pub trait App: Sized {
+	fn wireguard(&mut self) -> &mut Wireguard;
 	fn on_packet(&mut self, cx: &mut Core<Self>, buf: Slice);
 }
 
@@ -64,14 +63,13 @@ macro_rules! validate_packet_size {
 	}};
 }
 
-pub struct Wireguard<A> {
+pub struct Wireguard {
 	interface: Interface,
 	peers: Map<Peer, 1>,
-	io: runtime::State<A>,
 }
 
-impl<A: App> Wireguard<A> {
-	pub fn init(mut io: runtime::State<A>, addr: SocketAddr, s_priv: [u8; 32], p_pub: [u8; 32], q_pre: [u8; 32]) -> Self {
+impl Wireguard {
+	pub fn init<A: App>(cx: &mut Core<A>, addr: SocketAddr, s_priv: [u8; 32], p_pub: [u8; 32], q_pre: [u8; 32]) -> Self {
 		let socket: std::io::Result<UdpSocket> = try {
 			let socket = UdpSocket::bind::<SocketAddr>(match addr {
 				SocketAddr::V4(_) => SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into(),
@@ -86,7 +84,7 @@ impl<A: App> Wireguard<A> {
 
 		let socket = socket.expect("Failed to create socket");
 
-		let link = Io::new(&mut io, socket, Box::new(move |app, cx, buf| Self::read(app, cx, buf)));
+		let link = Io::new(cx, socket, Box::new(move |app, cx, buf| Self::read(app, cx, buf)));
 
 		let mut peers = Map::<_, 1>::default();
 
@@ -98,7 +96,7 @@ impl<A: App> Wireguard<A> {
 		let peer = Peer::init(&interface, slot.index(), p_pub, q_pre);
 		slot.insert(peer);
 
-		Self { peers, interface, io }
+		Self { peers, interface }
 	}
 
 	/// Gets a packet buffer for writing.
@@ -106,17 +104,13 @@ impl<A: App> Wireguard<A> {
 		Packet { inner: self.interface.link.buf() }
 	}
 
-	pub fn io(&mut self) -> &mut runtime::State<A> {
-		&mut self.io
-	}
-
-	pub fn write(&mut self, cx: &mut Core<A>, buf: Packet) {
-		if self.peers[Index::new(0)].write(cx, &mut self.io, &self.interface, buf, false).is_err() {
+	pub fn write<A: App>(&mut self, cx: &mut Core<A>, buf: Packet) {
+		if self.peers[Index::new(0)].write(cx, &self.interface, buf, false).is_err() {
 			error!("Failed to write packet");
 		}
 	}
 
-	fn read(app: &mut A, cx: &mut Core<A>, buf: Slice) {
+	fn read<A: App>(app: &mut A, cx: &mut Core<A>, buf: Slice) {
 		let _ = match *bytes::cast(&*buf) {
 			packet::Tag::INITIATION => app.wireguard().initiation(cx, buf),
 			packet::Tag::RESPONSE => app.wireguard().response(cx, buf),
@@ -126,28 +120,27 @@ impl<A: App> Wireguard<A> {
 		};
 	}
 
-	fn initiation(&mut self, cx: &mut Core<A>, mut buf: Slice) -> Result {
+	fn initiation<A: App>(&mut self, cx: &mut Core<A>, mut buf: Slice) -> Result {
 		validate_packet_size!(buf, Initiation + MAC_LEN);
 
 		self.interface.mac.check(cx, &buf)?;
-		self.interface
-			.handle_initiation(cx, &mut self.io, &mut self.peers, bytes::cast_mut(&mut *buf))
+		self.interface.handle_initiation(cx, &mut self.peers, bytes::cast_mut(&mut *buf))
 	}
 
-	fn response(&mut self, cx: &mut Core<A>, mut buf: Slice) -> Result {
+	fn response<A: App>(&mut self, cx: &mut Core<A>, mut buf: Slice) -> Result {
 		validate_packet_size!(buf, Response + MAC_LEN);
 
 		self.interface.mac.check(cx, &buf)?;
-		self.peers[Index::new(0)].handle_response(cx, &mut self.io, &self.interface, bytes::cast_mut(&mut *buf))
+		self.peers[Index::new(0)].handle_response(cx, &self.interface, bytes::cast_mut(&mut *buf))
 	}
 
-	fn cookie(&mut self, cx: &mut Core<A>, mut buf: Slice) -> Result {
+	fn cookie<A: App>(&mut self, cx: &mut Core<A>, mut buf: Slice) -> Result {
 		validate_packet_size!(buf, Cookie);
 
 		self.peers[Index::new(0)].handle_cookie(cx, bytes::cast_mut(&mut *buf))
 	}
 
-	fn data(app: &mut A, cx: &mut Core<A>, mut buf: Slice) -> Result {
+	fn data<A: App>(app: &mut A, cx: &mut Core<A>, mut buf: Slice) -> Result {
 		let expected = size_of::<Data>() + size_of::<Tag>();
 
 		let n = buf.len();
@@ -159,7 +152,7 @@ impl<A: App> Wireguard<A> {
 
 		let this = app.wireguard();
 
-		this.peers[Index::new(0)].handle_data(cx, &mut this.io, &this.interface, &mut buf)?;
+		this.peers[Index::new(0)].handle_data(cx, &this.interface, &mut buf)?;
 
 		if buf.is_empty() {
 			log::info!("Recieved keepalive");
@@ -170,17 +163,17 @@ impl<A: App> Wireguard<A> {
 		Ok(())
 	}
 
-	fn send_keepalive(&mut self, cx: &mut Core<A>, idx: Index<1>) {
+	fn send_keepalive<A: App>(&mut self, cx: &mut Core<A>, idx: Index<1>) {
 		info!("Sending keepalive packet");
 
 		let buf = self.buf();
 
-		if let Err(()) = &self.peers[idx].write(cx, &mut self.io, &self.interface, buf, true) {
+		if let Err(()) = &self.peers[idx].write(cx, &self.interface, buf, true) {
 			error!("Encountered error sending keepalive");
 		}
 	}
 
-	fn rekey(&mut self, cx: &mut Core<A>, idx: Index<1>) {
+	fn rekey<A: App>(&mut self, cx: &mut Core<A>, idx: Index<1>) {
 		info!("Rekeying");
 
 		let peer = &mut self.peers[idx];
@@ -189,7 +182,7 @@ impl<A: App> Wireguard<A> {
 			error!("REKEY_ATTEMPT_TIME reached");
 		}
 
-		if let Err(e) = peer.create_initiation(cx, &mut self.io, &self.interface) {
+		if let Err(e) = peer.create_initiation(cx, &self.interface) {
 			error!("Encountered error rekeying: {:#?}", e);
 		}
 	}
