@@ -85,6 +85,8 @@ fn recv(fd: RawFd, buf: &mut Slice) -> Result<bool> {
 pub(crate) struct State<A> {
 	fds: Vec<Poll>,
 	entries: Vec<Entry<A>>,
+	/// The number of I/O events available in `fds` since the last `poll`.
+	pending: u32,
 
 	/// Total number of poll calls
 	poll: u64,
@@ -103,6 +105,7 @@ impl<A> State<A> {
 		Self {
 			fds: Vec::new(),
 			entries: Vec::new(),
+			pending: 0,
 
 			poll: 0,
 			read: 0,
@@ -123,10 +126,10 @@ impl<A> State<A> {
 	}
 
 	/// Polls I/O, returning the number of file descriptors for which events have occurred.
-	pub fn poll(&mut self, timeout: Option<Duration>) -> Result<u32> {
+	pub fn poll(&mut self, timeout: Option<Duration>) -> Result {
 		self.poll += 1;
 
-		unsafe {
+		self.pending = unsafe {
 			poll(
 				self.fds.as_mut_ptr(),
 				self.fds.len().try_into().expect("Fewer than u32::MAX fds"),
@@ -134,16 +137,18 @@ impl<A> State<A> {
 			)
 		}
 		.try_into()
-		.map_err(|_| error!("poll() failed: {}", io::Error::last_os_error()))
+		.map_err(|_| error!("poll() failed: {}", io::Error::last_os_error()))?;
+
+		Ok(())
 	}
 
 	/// Execute I/O callbacks, returning whether any I/O reads occurred.
-	pub fn execute(app: &mut A, cx: &mut Core<A>, mut pending: u32) -> Result<bool> {
+	pub fn execute(app: &mut A, cx: &mut Core<A>) -> Result<bool> {
 		let mut this = cx.io();
 		let mut read = 0;
 
 		for idx in 0.. {
-			if pending == 0 {
+			if this.pending == 0 {
 				break;
 			}
 
@@ -176,8 +181,7 @@ impl<A> State<A> {
 			}
 
 			this.fds[idx].revents = 0;
-
-			pending -= 1;
+			this.pending -= 1;
 		}
 
 		this.read += read;

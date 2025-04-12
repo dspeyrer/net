@@ -26,10 +26,12 @@
 // DEALINGS IN THE SOFTWARE.
 
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
 use timers::Timers;
 pub use timers::{FixedTimerKey, MaxTimerKey};
+use utils::error::Result;
 
 mod timers;
 
@@ -53,7 +55,10 @@ pub struct Core<A> {
 }
 
 impl<A> Core<A> {
-	pub fn new(now: Instant, systime: SystemTime) -> Self {
+	pub fn new() -> Self {
+		let now = Instant::now();
+		let systime = SystemTime::now();
+
 		Self {
 			now,
 			idle_queue: VecDeque::new(),
@@ -77,6 +82,26 @@ impl<A> Core<A> {
 		}
 	}
 
+	/// Polls I/O and waits for timers, returning false if the runtime has no more work to do.
+	pub fn poll(&mut self) -> Result<bool> {
+		// Update the time.
+		let elapsed = self.update_time();
+		self.io.exec += elapsed;
+		// Get the timeout for the next query.
+		let timeout = self.next_wait();
+		// If there is no timeout and no more sockets to poll, there is no more work to do. Exit.
+		if timeout.is_none() && !self.io.is_io() {
+			return Ok(false);
+		}
+		// Poll I/O.
+		self.io.poll(timeout)?;
+		// Update the time.
+		let elapsed = self.update_time();
+		self.io.wait += elapsed;
+		// Since a timer elapsed or there is pending I/O, the runtime should not exit.
+		Ok(true)
+	}
+
 	/// Move time forward, expire any timers onto the main
 	/// [`Deferrer`] queue, then run main and lazy queues until there
 	/// is nothing outstanding.  Returns `true` if there are idle
@@ -92,14 +117,33 @@ impl<A> Core<A> {
 	/// to real time) if necessary.
 	///
 	/// [`Deferrer`]: struct.Deferrer.html
-	pub fn run(&mut self, app: &mut A, idle: bool) {
-		if idle {
+	pub fn run(&mut self, app: &mut A) -> Result {
+		let io_occurred = io::State::execute(app, self)?;
+
+		if !io_occurred {
 			if let Some(cb) = self.idle_queue.pop_front() {
 				cb(app, self);
 			}
 		}
 
 		Timers::advance(self, app, self.now);
+
+		Ok(())
+	}
+
+	pub fn exec(&mut self, app: &mut A) -> Result {
+		static EXIT: AtomicBool = AtomicBool::new(false);
+
+		// Register the exit handler.
+		ctrlc::set_handler(|| EXIT.store(true, Ordering::Relaxed)).unwrap();
+
+		// Run while the exit flag has not been set and the runtime is not empty.
+		while !EXIT.load(Ordering::Relaxed) && self.poll()? {
+			// Execute I/O callbacks and timer callbacks.
+			self.run(app)?;
+		}
+
+		Ok(())
 	}
 
 	pub fn update_time(&mut self) -> Duration {
