@@ -71,6 +71,8 @@ pub union Store {
 	stack: Stack,
 }
 
+unsafe impl Send for Store {}
+
 impl Debug for Store {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		<&[u8] as Debug>::fmt(&&**self, f)

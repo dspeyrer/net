@@ -26,6 +26,8 @@ pub struct Slice {
 	len: Cell<usize>,
 }
 
+unsafe impl Send for Slice {}
+
 impl Slice {
 	pub fn new(len: usize) -> Self {
 		unsafe {

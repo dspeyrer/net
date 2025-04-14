@@ -20,7 +20,7 @@ const CLASS_IN: u16 = 1;
 
 struct Entry<A> {
 	/// The callback for the resolved IP address
-	ret: Box<dyn FnOnce(&mut A, &mut Core<A>, Ipv4Addr)>,
+	ret: Box<dyn FnOnce(&mut A, &mut Core<A>, Ipv4Addr) + Send>,
 	/// The timer key of the retry callback for this request
 	retry: FixedTimerKey,
 	/// The DNS server that was queried
@@ -197,7 +197,12 @@ impl<A: App> Resolver<A> {
 }
 
 impl<A: App> Interface<A> {
-	pub fn resolve_v4(net: &mut Interface<A>, cx: &mut Core<A>, name: impl Into<String>, ret: Box<dyn FnOnce(&mut A, &mut Core<A>, Ipv4Addr)>) {
+	pub fn resolve_v4(
+		net: &mut Interface<A>,
+		cx: &mut Core<A>,
+		name: impl Into<String>,
+		ret: Box<dyn FnOnce(&mut A, &mut Core<A>, Ipv4Addr) + Send>,
+	) {
 		let primary = net.dns.primary;
 		Self::resolve_v4_with(net, cx, name, primary, ret)
 	}
@@ -207,7 +212,7 @@ impl<A: App> Interface<A> {
 		cx: &mut Core<A>,
 		name: impl Into<String>,
 		server: IpAddr,
-		ret: Box<dyn FnOnce(&mut A, &mut Core<A>, Ipv4Addr)>,
+		ret: Box<dyn FnOnce(&mut A, &mut Core<A>, Ipv4Addr) + Send>,
 	) {
 		let id = net.dns.gen_id();
 		let retry = Resolver::query(net, cx, id, server, name.into());
