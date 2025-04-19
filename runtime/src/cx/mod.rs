@@ -37,6 +37,22 @@ mod timers;
 
 use crate::io;
 
+fn step_time(prev: &mut Instant) -> Duration {
+	// Get the current time.
+	let now = Instant::now();
+
+	// Get the elapsed time since the previous timestamp.
+	if let Some(elapsed) = now.checked_duration_since(*prev) {
+		// Update the previous timestamp.
+		*prev = now;
+		// Return the elapsed time.
+		elapsed
+	} else {
+		// If the new timestamp is before the previous one, do not update it.
+		Duration::ZERO
+	}
+}
+
 /// Core operations available from both [`Stakker`] and [`Cx`] objects
 ///
 /// Both [`Stakker`] and [`Cx`] references auto-dereference to a
@@ -84,9 +100,8 @@ impl<A> Core<A> {
 
 	/// Polls I/O and waits for timers, returning false if the runtime has no more work to do.
 	pub fn poll(&mut self) -> Result<bool> {
-		// Update the time.
-		let elapsed = self.update_time();
-		self.io.exec += elapsed;
+		// Update the time, adding to the execution time.
+		self.io.exec += step_time(&mut self.now);
 		// Get the timeout for the next query.
 		let timeout = self.next_wait();
 		// If there is no timeout and no more sockets to poll, there is no more work to do. Exit.
@@ -95,9 +110,8 @@ impl<A> Core<A> {
 		}
 		// Poll I/O.
 		self.io.poll(timeout)?;
-		// Update the time.
-		let elapsed = self.update_time();
-		self.io.wait += elapsed;
+		// Update the time, adding to the poll waiting time.
+		self.io.wait += step_time(&mut self.now);
 		// Since a timer elapsed or there is pending I/O, the runtime should not exit.
 		Ok(true)
 	}
@@ -117,7 +131,12 @@ impl<A> Core<A> {
 	/// to real time) if necessary.
 	///
 	/// [`Deferrer`]: struct.Deferrer.html
-	pub fn run(&mut self, app: &mut A) -> Result {
+	pub fn run(&mut self, app: &mut A, update_time: bool) -> Result {
+		if update_time {
+			// Update the time, adding to the lock-acquisition timer.
+			self.io.lock += step_time(&mut self.now);
+		}
+
 		let io_occurred = io::State::execute(app, self)?;
 
 		if !io_occurred {
@@ -140,21 +159,10 @@ impl<A> Core<A> {
 		// Run while the exit flag has not been set and the runtime is not empty.
 		while !EXIT.load(Ordering::Relaxed) && self.poll()? {
 			// Execute I/O callbacks and timer callbacks.
-			self.run(app)?;
+			self.run(app, false)?;
 		}
 
 		Ok(())
-	}
-
-	pub fn update_time(&mut self) -> Duration {
-		let now = Instant::now();
-
-		if let Some(elapsed) = now.checked_duration_since(self.now) {
-			self.now = now;
-			elapsed
-		} else {
-			Duration::ZERO
-		}
 	}
 
 	/// Our view of the current time.  Actors should use this in
