@@ -1,6 +1,7 @@
 use alloc::collections::VecDeque;
 use core::time::Duration;
 use std::io::{self, ErrorKind};
+use std::mem;
 
 use collections::bytes::{Buf, Slice};
 use log::error;
@@ -146,44 +147,74 @@ impl<A> State<A> {
 	}
 
 	/// Execute I/O callbacks, returning whether any I/O reads occurred.
-	pub fn execute(app: &mut A, cx: &mut Core<A>) -> Result<bool> {
+	pub fn execute(app: &mut A, cx: &mut Core<A>) -> bool {
 		let mut read = 0;
 
 		for idx in 0.. {
+			// If there are no more pending sockets left, exit.
 			if cx.io.pending == 0 {
 				break;
 			}
 
-			let &mut Poll { fd, revents, ref mut events } = &mut cx.io.fds[idx];
+			// Get the pollfd and entry metadata.
+			let &mut Poll { fd, ref mut revents, ref mut events } = &mut cx.io.fds[idx];
 			let entry = &mut cx.io.entries[idx];
 
-			if revents == 0 {
+			// If there were no events on this socket, continue.
+			if *revents == 0 {
 				continue;
 			}
 
-			assert!(revents & POLLERR == 0, "socket error");
-			assert!(revents & POLLHUP == 0, "socket hangup");
-			assert!(revents & POLLNVAL == 0, "socket invalid");
+			// Otherwise, consume all event flags.
+			let revents = mem::take(revents);
 
-			if revents & POLLOUT != 0 {
-				if entry.flush_write(fd)? {
-					*events = POLLIN;
+			// Check for any errors.
+			let mut err = revents & (POLLNVAL | POLLERR | POLLHUP) != 0;
+
+			// If there were errors, log them.
+			if err {
+				if revents & POLLNVAL != 0 {
+					log::error!("{fd}: socket invalid");
+				}
+
+				if revents & POLLERR != 0 {
+					log::error!("{fd}: socket error");
+				}
+
+				if revents & POLLHUP != 0 {
+					log::error!("{fd}: socket hangup");
+				}
+			// Otherwise, flush read and write queues.
+			} else if revents & POLLOUT != 0 {
+				match entry.flush_write(fd) {
+					Ok(true) => *events = POLLIN,
+					Ok(false) => {}
+					Err(_) => err = true,
 				}
 			}
 
-			if revents & POLLIN != 0 {
-				let mut cb = entry.cb.take().unwrap();
-				Entry::flush_read(&mut cb, app, cx, fd, &mut read)?;
-				cx.io.entries[idx].cb = Some(cb);
+			// Grab the read callback.
+			let mut cb = entry.cb.take().unwrap();
+			// Check if an error occured.
+			if err
+				|| (
+					// If an error didn't occur, check if there's data to read.
+					revents & POLLIN != 0
+					// If there is, flush the read queue, checking for errors.
+					&& Entry::flush_read(&mut cb, app, cx, fd, &mut read).is_err()
+				) {
+				// If an error occured at any point, call the error callback.
+				cb(app, cx, Err(()));
 			}
-
-			cx.io.fds[idx].revents = 0;
+			// Return the callback.
+			cx.io.entries[idx].cb = Some(cb);
+			// Reduce the number of pending requests.
 			cx.io.pending -= 1;
 		}
 
 		cx.io.read += read;
 
-		Ok(read == 0)
+		read == 0
 	}
 }
 
@@ -199,16 +230,16 @@ impl<A> Drop for State<A> {
 }
 
 struct Entry<A> {
-	cb: Option<Box<dyn FnMut(&mut A, &mut Core<A>, Slice)>>,
+	cb: Option<Box<dyn FnMut(&mut A, &mut Core<A>, Result<Slice>)>>,
 	queue: VecDeque<Buf>,
 }
 
 impl<A> Entry<A> {
-	fn flush_read(cb: &mut dyn FnMut(&mut A, &mut Core<A>, Slice), app: &mut A, cx: &mut Core<A>, fd: RawFd, ctr: &mut u64) -> Result {
+	fn flush_read(cb: &mut dyn FnMut(&mut A, &mut Core<A>, Result<Slice>), app: &mut A, cx: &mut Core<A>, fd: RawFd, ctr: &mut u64) -> Result {
 		let mut buf = Slice::new(1500);
 
 		while recv(fd, &mut buf)? {
-			cb(app, cx, buf);
+			cb(app, cx, Ok(buf));
 			*ctr += 1;
 
 			buf = Slice::new(1500);
@@ -237,7 +268,7 @@ pub struct Io<T: AsRawFd> {
 }
 
 impl<T: AsRawFd> Io<T> {
-	pub fn new<A>(cx: &mut Core<A>, inner: T, cb: Box<dyn FnMut(&mut A, &mut Core<A>, Slice)>) -> Self {
+	pub fn new<A>(cx: &mut Core<A>, inner: T, cb: Box<dyn FnMut(&mut A, &mut Core<A>, Result<Slice>)>) -> Self {
 		cx.io.fds.push(Poll { fd: as_raw(&inner), events: POLLIN, revents: 0 });
 		cx.io.entries.push(Entry { cb: Some(cb), queue: VecDeque::new() });
 

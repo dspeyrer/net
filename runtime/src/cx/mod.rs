@@ -127,13 +127,13 @@ impl<A> Core<A> {
 	/// to real time) if necessary.
 	///
 	/// [`Deferrer`]: struct.Deferrer.html
-	pub fn run(&mut self, app: &mut A, update_time: bool) -> Result {
+	pub fn run(&mut self, app: &mut A, update_time: bool) {
 		if update_time {
 			// Update the time, adding to the lock-acquisition timer.
 			self.io.lock += step_time(&mut self.now);
 		}
 
-		let io_occurred = io::State::execute(app, self)?;
+		let io_occurred = io::State::execute(app, self);
 
 		if !io_occurred {
 			if let Some(cb) = self.idle_queue.pop_front() {
@@ -142,8 +142,6 @@ impl<A> Core<A> {
 		}
 
 		Timers::advance(self, app, self.now);
-
-		Ok(())
 	}
 
 	pub fn exec(&mut self, app: &mut A) -> Result {
@@ -155,7 +153,7 @@ impl<A> Core<A> {
 		// Run while the exit flag has not been set and the runtime is not empty.
 		while !EXIT.load(Ordering::Relaxed) && self.poll()? {
 			// Execute I/O callbacks and timer callbacks.
-			self.run(app, false)?;
+			self.run(app, false);
 		}
 
 		Ok(())
