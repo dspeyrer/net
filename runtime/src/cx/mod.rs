@@ -67,7 +67,7 @@ pub struct Core<A> {
 	idle_queue: VecDeque<Box<dyn FnOnce(&mut A, &mut Core<A>)>>,
 	timers: Timers<A>,
 	systime: SystemTime,
-	io: io::State<A>,
+	pub(crate) io: io::State<A>,
 }
 
 impl<A> Core<A> {
@@ -82,10 +82,6 @@ impl<A> Core<A> {
 			systime,
 			io: io::State::new(),
 		}
-	}
-
-	pub(crate) fn io(&mut self) -> &mut io::State<A> {
-		&mut self.io
 	}
 
 	/// Return how long we need to wait for the next timer, or None if

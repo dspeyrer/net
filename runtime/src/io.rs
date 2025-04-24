@@ -147,16 +147,15 @@ impl<A> State<A> {
 
 	/// Execute I/O callbacks, returning whether any I/O reads occurred.
 	pub fn execute(app: &mut A, cx: &mut Core<A>) -> Result<bool> {
-		let mut this = cx.io();
 		let mut read = 0;
 
 		for idx in 0.. {
-			if this.pending == 0 {
+			if cx.io.pending == 0 {
 				break;
 			}
 
-			let &mut Poll { fd, revents, ref mut events } = &mut this.fds[idx];
-			let mut entry = &mut this.entries[idx];
+			let &mut Poll { fd, revents, ref mut events } = &mut cx.io.fds[idx];
+			let entry = &mut cx.io.entries[idx];
 
 			if revents == 0 {
 				continue;
@@ -174,20 +173,15 @@ impl<A> State<A> {
 
 			if revents & POLLIN != 0 {
 				let mut cb = entry.cb.take().unwrap();
-
 				Entry::flush_read(&mut cb, app, cx, fd, &mut read)?;
-
-				this = cx.io();
-				entry = &mut this.entries[idx];
-
-				entry.cb = Some(cb);
+				cx.io.entries[idx].cb = Some(cb);
 			}
 
-			this.fds[idx].revents = 0;
-			this.pending -= 1;
+			cx.io.fds[idx].revents = 0;
+			cx.io.pending -= 1;
 		}
 
-		this.read += read;
+		cx.io.read += read;
 
 		Ok(read == 0)
 	}
@@ -244,10 +238,8 @@ pub struct Io<T: AsRawFd> {
 
 impl<T: AsRawFd> Io<T> {
 	pub fn new<A>(cx: &mut Core<A>, inner: T, cb: Box<dyn FnMut(&mut A, &mut Core<A>, Slice)>) -> Self {
-		let io = cx.io();
-
-		io.fds.push(Poll { fd: as_raw(&inner), events: POLLIN, revents: 0 });
-		io.entries.push(Entry { cb: Some(cb), queue: VecDeque::new() });
+		cx.io.fds.push(Poll { fd: as_raw(&inner), events: POLLIN, revents: 0 });
+		cx.io.entries.push(Entry { cb: Some(cb), queue: VecDeque::new() });
 
 		Self { inner }
 	}
@@ -258,22 +250,18 @@ impl<T: AsRawFd> Io<T> {
 	}
 
 	pub fn write<A>(&self, cx: &mut Core<A>, buf: Buf) -> Result {
-		let io = cx.io();
-
 		if !send(as_raw(&self.inner), buf.filled())? {
-			let idx = io.idx_of(&self.inner);
-			io.entries[idx].queue.push_front(buf);
-			io.fds[idx].events |= POLLOUT;
+			let idx = cx.io.idx_of(&self.inner);
+			cx.io.entries[idx].queue.push_front(buf);
+			cx.io.fds[idx].events |= POLLOUT;
 		}
 
 		Ok(())
 	}
 
 	pub fn unbind<A>(self, cx: &mut Core<A>) {
-		let io = cx.io();
-
-		let idx = io.idx_of(&self.inner);
-		io.entries.swap_remove(idx);
-		io.fds.swap_remove(idx);
+		let idx = cx.io.idx_of(&self.inner);
+		cx.io.entries.swap_remove(idx);
+		cx.io.fds.swap_remove(idx);
 	}
 }
