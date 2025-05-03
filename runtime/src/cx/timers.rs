@@ -28,7 +28,6 @@
 use std::cmp::Ordering;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
-use std::mem;
 use std::time::{Duration, Instant};
 
 use super::Core;
@@ -259,13 +258,16 @@ impl<S> Timers<S> {
 		while cx.timers.now < target_now {
 			// Advance in steps of max 0x7FFF seconds to avoid
 			// skipping timers in the queue
-			let now = cx.timers.now.add_secs(0x7FFF).min(target_now);
-			let key = TimerKey::new(WrapTime(now.wt().0 + 1), 0);
-			let rest = cx.timers.queue.split_off(&key);
-			let head = mem::replace(&mut cx.timers.queue, rest);
-			cx.timers.now = now;
+			cx.timers.now = cx.timers.now.add_secs(0x7FFF).min(target_now);
+			let key = cx.timers.now.wt();
 
-			for (key, bfn) in head {
+			while let Some(next) = cx.timers.queue.first_entry() {
+				if next.key().time > key {
+					break;
+				}
+
+				let (key, bfn) = next.remove_entry();
+
 				if key.slot >= 0x8000_0000 {
 					// Fixed timer
 					bfn(app, cx);
