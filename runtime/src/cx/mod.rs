@@ -159,6 +159,15 @@ impl<A> Core<A> {
 		Ok(())
 	}
 
+	/// Clears all I/O and pending timers, resetting the state of the core.
+	/// If this is called during an I/O callback, no more operations will be performed,
+	/// and the next call to `poll` will return `false`.
+	pub fn clear(&mut self) {
+		self.idle_queue.clear();
+		self.timers.clear();
+		self.io.clear();
+	}
+
 	/// Our view of the current time.  Actors should use this in
 	/// preference to `Instant::now()` for speed and in order to work
 	/// in virtual time.

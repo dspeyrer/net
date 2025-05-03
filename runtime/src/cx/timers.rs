@@ -421,4 +421,11 @@ impl<S> Timers<S> {
 			false
 		}
 	}
+
+	// Clears the timers.
+	pub fn clear(&mut self) {
+		// Note: we do not clear the vartimers here,
+		// since they may be being processed right now.
+		self.queue.clear();
+	}
 }

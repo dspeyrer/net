@@ -149,11 +149,14 @@ impl<A> State<A> {
 	/// Execute I/O callbacks, returning whether any I/O reads occurred.
 	pub fn execute(app: &mut A, cx: &mut Core<A>) -> bool {
 		let mut read = 0;
+		let mut idx = 0;
 
-		for idx in 0.. {
-			// If there are no more pending sockets left, exit.
-			if cx.io.pending == 0 {
-				break;
+		// Search for requests as long as we know there are any pending.
+		while cx.io.pending != 0 {
+			// If we've reached the end of the `fds` list while there is still pending data,
+			// then a reordering must have occurred, and we should restart.
+			if idx > cx.io.fds.len() {
+				idx = 0;
 			}
 
 			// Get the pollfd and entry metadata.
@@ -162,11 +165,15 @@ impl<A> State<A> {
 
 			// If there were no events on this socket, continue.
 			if *revents == 0 {
+				// Grab the next index to process.
+				idx += 1;
 				continue;
 			}
 
 			// Otherwise, consume all event flags.
 			let revents = mem::take(revents);
+			// Reduce the number of pending requests.
+			cx.io.pending -= 1;
 
 			// Check for any errors.
 			let mut err = revents & (POLLNVAL | POLLERR | POLLHUP) != 0;
@@ -207,14 +214,34 @@ impl<A> State<A> {
 				cb(app, cx, Err(()));
 			}
 			// Return the callback.
-			cx.io.entries[idx].cb = Some(cb);
-			// Reduce the number of pending requests.
-			cx.io.pending -= 1;
+			match cx.io.entries.get_mut(idx) {
+				// As long as the entry still exists and its callback is missing, we can return it.
+				Some(Entry { cb: ref mut slot @ None, .. }) => *slot = Some(cb),
+				// Otherwise, if the entry index is out of range, at least one socket has been deleted.
+				_ => {
+					// In case the current socket is not the one which has been deleted,
+					// search through all entries to try to find one with a missing callback.
+					if let Some(x) = cx.io.entries.iter_mut().find(|x| x.cb.is_none()) {
+						// Insert the callback once we find its slot.
+						x.cb = Some(cb);
+					}
+				}
+			}
+
+			// Grab the next index to process.
+			idx += 1;
 		}
 
 		cx.io.read += read;
 
 		read == 0
+	}
+
+	/// Clears all fds and pending socket events.
+	pub fn clear(&mut self) {
+		self.fds.clear();
+		self.entries.clear();
+		self.pending = 0;
 	}
 }
 
