@@ -67,7 +67,7 @@ struct Wheel {
 
 pub struct Peer {
 	wheel: Wheel,
-	queue: Vec<Packet>,
+	pub queue: Vec<Packet>,
 	pub timers: Timers,
 	pub hs: Noise,
 }

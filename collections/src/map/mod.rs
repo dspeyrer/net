@@ -73,6 +73,10 @@ where
 			hash,
 		}
 	}
+
+	pub fn iter(&self) -> impl Iterator<Item = &T> {
+		self.core.iter()
+	}
 }
 
 impl<T: Key, const N: usize, S: BuildHasher> std::ops::Index<Index<N>> for Map<T, N, S>

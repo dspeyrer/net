@@ -54,6 +54,10 @@ impl<T, const N: usize> Core<T, N> {
 		self.slot.contains(i)
 	}
 
+	pub fn iter(&self) -> impl Iterator<Item = &T> {
+		self.slot.iter().map(|x| &x.1 .0)
+	}
+
 	/// unchecked get. must be filled & in bounds
 	pub unsafe fn get(&self, i: usize) -> &T {
 		&self.slot[i].0

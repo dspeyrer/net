@@ -248,11 +248,11 @@ impl<A> State<A> {
 impl<A> Drop for State<A> {
 	fn drop(&mut self) {
 		log::info!("runtime statistics:");
-		log::info!("socket reads per poll: {:>7.2}  ", self.read as f64 / self.poll as f64);
-		log::info!("poll wait time:        {:>7.2}us", self.wait.as_micros() as f64 / self.poll as f64);
-		log::info!("lock acquisition:      {:>7.2}us", self.lock.as_micros() as f64 / self.poll as f64);
-		log::info!("execution time:        {:>7.2}us", self.exec.as_micros() as f64 / self.poll as f64);
-		log::info!("timeout:               {:>7.2}us", self.tout.as_micros() as f64 / self.poll as f64);
+		log::info!("socket reads per poll: {:>10.2}  ", self.read as f64 / self.poll as f64);
+		log::info!("poll wait time:        {:>10.2}us", self.wait.as_micros() as f64 / self.poll as f64);
+		log::info!("lock acquisition:      {:>10.2}us", self.lock.as_micros() as f64 / self.poll as f64);
+		log::info!("execution time:        {:>10.2}us", self.exec.as_micros() as f64 / self.poll as f64);
+		log::info!("timeout:               {:>10.2}us", self.tout.as_micros() as f64 / self.poll as f64);
 	}
 }
 

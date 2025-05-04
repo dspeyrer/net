@@ -51,6 +51,11 @@ impl Packet {
 	}
 }
 
+#[derive(Clone, Copy)]
+pub struct Stats {
+	pub buffered: usize,
+}
+
 macro_rules! validate_packet_size {
 	($buf:ident, $struct:ident $( $rest:tt )*) => {{
 		let expected = size_of::<$struct>() $( $rest )*;
@@ -97,6 +102,12 @@ impl Wireguard {
 		slot.insert(peer);
 
 		Self { peers, interface }
+	}
+
+	pub fn stats(&self) -> Stats {
+		Stats {
+			buffered: self.peers.iter().map(|x| x.queue.len()).sum(),
+		}
 	}
 
 	/// Gets a packet buffer for writing.
