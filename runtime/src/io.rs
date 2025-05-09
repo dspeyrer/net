@@ -133,6 +133,10 @@ impl<A> State<A> {
 	pub fn poll(&mut self, timeout: Option<Duration>) -> Result {
 		self.poll += 1;
 
+		if let Some(dur) = timeout {
+			self.tout += dur
+		}
+
 		self.pending = unsafe {
 			poll(
 				self.fds.as_mut_ptr(),
@@ -247,12 +251,12 @@ impl<A> State<A> {
 
 impl<A> Drop for State<A> {
 	fn drop(&mut self) {
-		log::info!("runtime statistics:");
-		log::info!("socket reads per poll: {:>10.2}  ", self.read as f64 / self.poll as f64);
-		log::info!("poll wait time:        {:>10.2}us", self.wait.as_micros() as f64 / self.poll as f64);
-		log::info!("lock acquisition:      {:>10.2}us", self.lock.as_micros() as f64 / self.poll as f64);
-		log::info!("execution time:        {:>10.2}us", self.exec.as_micros() as f64 / self.poll as f64);
-		log::info!("timeout:               {:>10.2}us", self.tout.as_micros() as f64 / self.poll as f64);
+		log::info!("runtime statistics (average per poll):");
+		log::info!("socket reads:     {:>10.2}  ", self.read as f64 / self.poll as f64);
+		log::info!("poll wait time:   {:>10.2}us", self.wait.as_micros() as f64 / self.poll as f64);
+		log::info!("lock acquisition: {:>10.2}us", self.lock.as_micros() as f64 / self.poll as f64);
+		log::info!("execution time:   {:>10.2}us", self.exec.as_micros() as f64 / self.poll as f64);
+		log::info!("poll timeout:     {:>10.2}us", self.tout.as_micros() as f64 / self.poll as f64);
 	}
 }
 
