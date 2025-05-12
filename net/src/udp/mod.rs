@@ -73,11 +73,16 @@ impl<A: App> Interface<A> {
 			return;
 		}
 
-		let src = SocketAddr { addr, port: header.src.get() };
+		let (local, remote) = match icmp {
+			None => (header.dst, header.src),
+			Some(_) => (header.src, header.dst),
+		};
 
-		match header.dst.get() {
-			n if n == A::DNS_PORT => dns::Resolver::process(app, cx, src, buf),
-			n => app.on_udp(cx, n, src, buf, icmp),
+		let rem = SocketAddr { addr, port: remote.get() };
+
+		match local.get() {
+			n if n == A::DNS_PORT => dns::Resolver::process(app, cx, rem, buf),
+			n => app.on_udp(cx, n, rem, buf, icmp),
 		}
 	}
 

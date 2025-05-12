@@ -13,7 +13,7 @@ use utils::endian::{u16be, u32be, u64be, BigEndian};
 
 use crate::ip::Protocol::Tcp;
 use crate::ip::{SocketAddr, ToS};
-use crate::App;
+use crate::{App, IcmpErrorTy};
 
 /// A fundamental notion in the design is that every octet of data sent over a TCP connection has a sequence number. Since every octet is sequenced, each of them can be acknowledged. The acknowledgment mechanism employed is cumulative so that an acknowledgment of sequence number X indicates that all octets up to but not including X have been received. This mechanism allows for straightforward duplicate detection in the presence of retransmission. The numbering scheme of octets within a segment is as follows: the first data octet immediately following the header is the lowest numbered, and the following octets are numbered consecutively.
 ///
@@ -254,8 +254,12 @@ pub(crate) struct Interface {
 }
 
 impl<A: App> crate::Interface<A> {
-	pub fn recv_tcp(app: &mut A, cx: &mut Core<A>, addr: IpAddr, tos: ToS, buf: Slice) {
+	pub fn recv_tcp(app: &mut A, cx: &mut Core<A>, addr: IpAddr, tos: ToS, buf: Slice, icmp: Option<IcmpErrorTy>) {
 		let net = app.net();
+
+		if icmp.is_some() {
+			return;
+		}
 
 		if buf.len() < size_of::<Header>() {
 			return;

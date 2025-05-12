@@ -9,6 +9,7 @@ use utils::endian::BigEndian;
 use crate::ip::{Checksum, ToS};
 use crate::{App, Interface};
 
+#[derive(Debug, Clone, Copy)]
 pub enum IcmpErrorTy {
 	DestinationUnreachable,
 	FragmentationNeeded { next_hop_mtu: u16 },
@@ -55,7 +56,11 @@ struct Header {
 }
 
 impl<A: App> Interface<A> {
-	pub fn recv_icmp(app: &mut A, cx: &mut Core<A>, _: IpAddr, _: ToS, buf: Slice) {
+	pub fn recv_icmp(app: &mut A, cx: &mut Core<A>, _: IpAddr, _: ToS, buf: Slice, icmp: Option<IcmpErrorTy>) {
+		if icmp.is_some() {
+			return;
+		}
+
 		if buf.len() < size_of::<Header>() {
 			log::info!("received ICMPv4 packet that is too short");
 			return;

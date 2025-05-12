@@ -52,8 +52,13 @@ impl<A: App> crate::Interface<A> {
 
 		let ip = app.net().ip.v4;
 
-		if header.dst != ip {
-			warn!("Found IP packet with destination {}, expected {}", header.dst, ip);
+		let (local, remote) = match icmp {
+			None => (header.dst, header.src),
+			Some(_) => (header.src, header.dst),
+		};
+
+		if local != ip {
+			warn!("Found IP packet with local target {}, expected {}", local, ip);
 			return;
 		}
 
@@ -92,17 +97,17 @@ impl<A: App> crate::Interface<A> {
 		let more = frag.more();
 
 		let proto = header.proto.get();
-		let src = IpAddr::V4(header.src);
+		let rem = IpAddr::V4(remote);
 
 		if (start == 0 && !more) || icmp.is_none() {
 			// Process the packet regularly if it is not fragmented
-			Self::handle(app, cx, proto, src, header.tos, buf, icmp);
+			Self::handle(app, cx, proto, rem, header.tos, buf, icmp);
 		} else {
 			let ds = header.tos.ds();
 			let ecn = header.tos.ecn();
 
 			// Construct a fragmentation key and fragment.
-			let key = fragment::Key { ident: frag.idnt() as u32, proto, addr: src, ds };
+			let key = fragment::Key { ident: frag.idnt() as u32, proto, addr: rem, ds };
 
 			let fragment = fragment::Fragment { start, more, buf };
 

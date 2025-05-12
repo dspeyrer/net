@@ -117,8 +117,8 @@ impl<A: App> crate::Interface<A> {
 	pub(crate) fn handle(app: &mut A, cx: &mut Core<A>, proto: Protocol, addr: IpAddr, tos: ToS, buf: Slice, icmp: Option<IcmpErrorTy>) {
 		match proto {
 			Protocol::Udp => Self::recv_udp(app, cx, addr, tos, buf, icmp),
-			Protocol::Tcp => Self::recv_tcp(app, cx, addr, tos, buf),
-			Protocol::Icmp => Self::recv_icmp(app, cx, addr, tos, buf),
+			Protocol::Tcp => Self::recv_tcp(app, cx, addr, tos, buf, icmp),
+			Protocol::Icmp => Self::recv_icmp(app, cx, addr, tos, buf, icmp),
 			Protocol::Unknown => log::debug!("Unimplemented IP protocol"),
 		}
 	}
