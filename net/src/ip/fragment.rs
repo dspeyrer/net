@@ -156,7 +156,7 @@ impl<A: App> crate::Interface<A> {
 				if let Some(buf) = state.assemble() {
 					let tos = ToS::new(state.ecn, key.ds);
 					slot.remove();
-					Self::handle(app, cx, key.proto, key.addr, tos, buf);
+					Self::handle(app, cx, key.proto, key.addr, tos, buf, None);
 				}
 			}
 			// If there are no fragments associated with the key yet, then insert a new slot.

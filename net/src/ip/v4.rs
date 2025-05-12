@@ -9,6 +9,7 @@ use utils::bytes::{self, Cast};
 use utils::endian::{u16be, BigEndian};
 
 use super::{fragment, Interface};
+use crate::icmp::IcmpErrorTy;
 use crate::ip::Version::V4;
 use crate::ip::{Checksum, Protocol, ToS};
 use crate::App;
@@ -46,7 +47,7 @@ pub(super) struct Header {
 }
 
 impl<A: App> crate::Interface<A> {
-	pub fn recv_v4(app: &mut A, cx: &mut Core<A>, buf: Slice) {
+	pub fn recv_v4(app: &mut A, cx: &mut Core<A>, buf: Slice, icmp: Option<IcmpErrorTy>) {
 		let header: &Header = buf.split();
 
 		let ip = app.net().ip.v4;
@@ -62,26 +63,28 @@ impl<A: App> crate::Interface<A> {
 
 		// TODO: Process options
 
-		if header.csm != [0, 0] {
-			let mut csum = Checksum::of(bytes::as_slice(header));
-			csum.push(options);
+		if icmp.is_none() {
+			if header.csm != [0, 0] {
+				let mut csum = Checksum::of(bytes::as_slice(header));
+				csum.push(options);
 
-			let o = csum.end();
+				let o = csum.end();
 
-			if o != [0, 0] {
-				warn!("Packet has invalid checksum.");
+				if o != [0, 0] {
+					warn!("Packet has invalid checksum.");
+					return;
+				}
+			}
+
+			let payload_len = header.len.get() as usize - header_len;
+
+			if buf.len() < payload_len {
+				log::warn!("IP packet smaller than specified length field.");
 				return;
 			}
+
+			buf.truncate(payload_len);
 		}
-
-		let payload_len = header.len.get() as usize - header_len;
-
-		if buf.len() < payload_len {
-			log::warn!("IP packet smaller than specified length field.");
-			return;
-		}
-
-		buf.truncate(payload_len);
 
 		let frag = header.frg.get();
 
@@ -91,9 +94,9 @@ impl<A: App> crate::Interface<A> {
 		let proto = header.proto.get();
 		let src = IpAddr::V4(header.src);
 
-		if start == 0 && !more {
+		if (start == 0 && !more) || icmp.is_none() {
 			// Process the packet regularly if it is not fragmented
-			Self::handle(app, cx, proto, src, header.tos, buf);
+			Self::handle(app, cx, proto, src, header.tos, buf, icmp);
 		} else {
 			let ds = header.tos.ds();
 			let ecn = header.tos.ecn();

@@ -1,4 +1,4 @@
-#![feature(slice_as_chunks, write_all_vectored, trivial_bounds)]
+#![feature(write_all_vectored, trivial_bounds)]
 
 use core::net::{Ipv4Addr, Ipv6Addr};
 use std::net::IpAddr;
@@ -10,11 +10,14 @@ use wireguard::Wireguard;
 extern crate alloc;
 
 mod dns;
+mod icmp;
 mod ip;
+
 pub mod pcap;
 pub mod tcp;
 pub mod udp;
 
+pub use icmp::IcmpErrorTy;
 pub use ip::SocketAddr;
 
 pub struct Interface<A> {
@@ -35,7 +38,7 @@ pub trait App: wireguard::App + Sized {
 	const DNS_PORT: u16;
 
 	/// The UDP read callback.
-	fn on_udp(&mut self, cx: &mut Core<Self>, port: u16, src: SocketAddr, buf: Slice);
+	fn on_udp(&mut self, cx: &mut Core<Self>, port: u16, src: SocketAddr, buf: Slice, icmp: Option<IcmpErrorTy>);
 
 	fn net(&mut self) -> &mut Interface<Self>;
 }

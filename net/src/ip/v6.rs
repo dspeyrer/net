@@ -57,7 +57,7 @@ impl<A: App> crate::Interface<A> {
 		let proto = header.nxt.get();
 		let src = IpAddr::V6(header.src);
 
-		Self::handle(app, cx, proto, src, ver.tos(), buf)
+		Self::handle(app, cx, proto, src, ver.tos(), buf, None)
 	}
 }
 

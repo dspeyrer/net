@@ -17,6 +17,7 @@ pub mod fragment;
 
 pub use checksum::Checksum;
 
+use crate::icmp::IcmpErrorTy;
 use crate::App;
 
 pub struct Packet {
@@ -75,7 +76,7 @@ impl<A: App> crate::Interface<A> {
 		let ver = bytes::cast::<Prefix, _>(&*buf).ver();
 
 		let _ = match ver {
-			Version::V4 => Self::recv_v4(app, cx, buf),
+			Version::V4 => Self::recv_v4(app, cx, buf, None),
 			Version::V6 => Self::recv_v6(app, cx, buf),
 			Version::Unknown => return warn!("Invalid IP packet version"),
 		};
@@ -113,10 +114,11 @@ impl<A: App> crate::Interface<A> {
 		self.link.write(cx, buf.inner);
 	}
 
-	pub(crate) fn handle(app: &mut A, cx: &mut Core<A>, proto: Protocol, addr: IpAddr, tos: ToS, buf: Slice) {
+	pub(crate) fn handle(app: &mut A, cx: &mut Core<A>, proto: Protocol, addr: IpAddr, tos: ToS, buf: Slice, icmp: Option<IcmpErrorTy>) {
 		match proto {
-			Protocol::Udp => Self::recv_udp(app, cx, addr, tos, buf),
+			Protocol::Udp => Self::recv_udp(app, cx, addr, tos, buf, icmp),
 			Protocol::Tcp => Self::recv_tcp(app, cx, addr, tos, buf),
+			Protocol::Icmp => Self::recv_icmp(app, cx, addr, tos, buf),
 			Protocol::Unknown => log::debug!("Unimplemented IP protocol"),
 		}
 	}
@@ -212,6 +214,7 @@ pub enum ECN {
 #[bitsize(8)]
 #[derive(Hash, PartialEq, Eq, Clone, Copy, FromBits)]
 pub enum Protocol {
+	Icmp = 1,
 	Tcp = 6,
 	Udp = 17,
 	#[fallback]

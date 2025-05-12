@@ -8,6 +8,7 @@ use utils::bytes::{self, Cast};
 use utils::endian::u16be;
 use utils::error::*;
 
+use crate::icmp::IcmpErrorTy;
 use crate::ip::Protocol::Udp;
 use crate::ip::{self, Checksum, SocketAddr, ToS};
 use crate::{dns, App, Interface};
@@ -38,7 +39,7 @@ struct Header {
 }
 
 impl<A: App> Interface<A> {
-	pub fn recv_udp(app: &mut A, cx: &mut Core<A>, addr: IpAddr, _: ToS, buf: Slice) {
+	pub fn recv_udp(app: &mut A, cx: &mut Core<A>, addr: IpAddr, _: ToS, buf: Slice, icmp: Option<IcmpErrorTy>) {
 		let this = app.net();
 
 		let Ok(len): Result<u32, _> = buf.len().try_into() else {
@@ -51,7 +52,7 @@ impl<A: App> Interface<A> {
 			return;
 		}
 
-		if addr.is_ipv6() || bytes::cast::<Header, _>(&*buf).csum != [0, 0] {
+		if icmp.is_none() && (addr.is_ipv6() || bytes::cast::<Header, _>(&*buf).csum != [0, 0]) {
 			let mut csum = this.ip.pseudo_checksum(Udp, addr);
 
 			csum.push(&len.to_be_bytes());
@@ -67,7 +68,7 @@ impl<A: App> Interface<A> {
 
 		let header: &Header = buf.split();
 
-		if header.len.get() as u32 != len {
+		if icmp.is_none() && header.len.get() as u32 != len {
 			log::warn!("UDP header length ({len}) does not match actual packet length ({})", len);
 			return;
 		}
@@ -76,7 +77,7 @@ impl<A: App> Interface<A> {
 
 		match header.dst.get() {
 			n if n == A::DNS_PORT => dns::Resolver::process(app, cx, src, buf),
-			n => app.on_udp(cx, n, src, buf),
+			n => app.on_udp(cx, n, src, buf, icmp),
 		}
 	}
 
