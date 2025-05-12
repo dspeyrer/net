@@ -233,6 +233,11 @@ impl<A> Core<A> {
 		self.timers.add(expiry, Box::new(f))
 	}
 
+	/// Returns whether a timer exists.
+	pub fn timer_active(&self, key: FixedTimerKey) -> bool {
+		self.timers.is_active(key)
+	}
+
 	/// Delete a fixed timer.  Returns `true` on success, `false` if
 	/// timer no longer exists (i.e. it expired or was deleted)
 	#[inline]

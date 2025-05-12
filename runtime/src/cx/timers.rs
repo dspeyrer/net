@@ -357,6 +357,15 @@ impl<S> Timers<S> {
 		}
 	}
 
+	/// Returns whether a timer exists.
+	pub(crate) fn is_active(&self, fk: FixedTimerKey) -> bool {
+		if fk.slot < 0x8000_0000 {
+			self.max_is_active(MaxTimerKey { slot: fk.slot, gen: fk.gen_or_time })
+		} else {
+			self.queue.contains_key(&TimerKey::new(WrapTime(fk.gen_or_time), fk.slot))
+		}
+	}
+
 	// Delete a fixed timer.  Returns: true: success, false: timer no
 	// longer exists (i.e. it expired or was deleted)
 	pub(crate) fn del(&mut self, fk: FixedTimerKey) -> bool {
