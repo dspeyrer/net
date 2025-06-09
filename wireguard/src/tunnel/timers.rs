@@ -63,8 +63,10 @@ impl Timers {
 
 	/// Call when a data packet is recieved.
 	pub fn recv_data<A: App>(&mut self, cx: &mut Core<A>, is_keepalive: bool) {
-		// Cancel the timeout rekey timer, since a packet has been recieved
-		cx.timer_max_del(self.rekey);
+		if !self.is_rekeying() {
+			// Cancel the timeout rekey timer, since a packet has been recieved.
+			cx.timer_max_del(self.rekey);
+		}
 
 		if !is_keepalive {
 			// Defer the sending of a keepalive packet if the recieved packet is not a keepalive packet
