@@ -100,12 +100,18 @@ impl<A> Core<A> {
 		self.io.exec += step_time(&mut self.now);
 		// Get the timeout for the next query.
 		let timeout = self.next_wait();
-		// If there is no timeout and no more sockets to poll, there is no more work to do. Exit.
-		if timeout.is_none() && !self.io.is_io() {
+
+		if self.io.is_io() {
+			// Poll I/O.
+			self.io.poll(timeout)?;
+		} else if let Some(timeout) = timeout {
+			// If there are no sockets to poll, but there is a timeout, sleep until its expiration.
+			std::thread::sleep(timeout);
+		} else {
+			// If there is no timeout and no more sockets to poll, there is no more work to do. Exit.
 			return Ok(false);
 		}
-		// Poll I/O.
-		self.io.poll(timeout)?;
+
 		// Update the time, adding to the poll waiting time.
 		self.io.wait += step_time(&mut self.now);
 		// Since a timer elapsed or there is pending I/O, the runtime should not exit.
