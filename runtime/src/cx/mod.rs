@@ -101,6 +101,11 @@ impl<A> Core<A> {
 		// Get the timeout for the next query.
 		let timeout = self.next_wait();
 
+		// Update the timeout statistics.
+		if let Some(dur) = timeout {
+			self.io.tout += dur;
+		}
+
 		if self.io.is_io() {
 			// Poll I/O.
 			self.io.poll(timeout)?;
@@ -111,6 +116,9 @@ impl<A> Core<A> {
 			// If there is no timeout and no more sockets to poll, there is no more work to do. Exit.
 			return Ok(false);
 		}
+
+		// Update the counter statistics for number of poll calls.
+		self.io.poll += 1;
 
 		// Update the time, adding to the poll waiting time.
 		self.io.wait += step_time(&mut self.now);

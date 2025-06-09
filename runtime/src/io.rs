@@ -90,7 +90,7 @@ pub(crate) struct State<A> {
 	pending: u32,
 
 	/// Total number of poll calls
-	poll: u64,
+	pub poll: u64,
 	/// Total number of socket reads
 	read: u64,
 	/// Total poll wait time
@@ -100,7 +100,7 @@ pub(crate) struct State<A> {
 	/// Total execution time
 	pub exec: Duration,
 	/// Total requested timeout duration
-	tout: Duration,
+	pub tout: Duration,
 }
 
 impl<A> State<A> {
@@ -131,12 +131,6 @@ impl<A> State<A> {
 
 	/// Polls I/O, returning the number of file descriptors for which events have occurred.
 	pub fn poll(&mut self, timeout: Option<Duration>) -> Result {
-		self.poll += 1;
-
-		if let Some(dur) = timeout {
-			self.tout += dur
-		}
-
 		self.pending = unsafe {
 			poll(
 				self.fds.as_mut_ptr(),
