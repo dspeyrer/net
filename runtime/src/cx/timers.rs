@@ -277,8 +277,8 @@ impl<S> Timers<S> {
 				match slot.item {
 					VarItem::Max(ref mut vt) => {
 						if vt.expiry <= target_now {
-							bfn(app, cx);
 							cx.timers.free_slot(key.slot);
+							bfn(app, cx);
 						} else {
 							// Set time to current expiry time
 							vt.curr = vt.expiry.min(cx.timers.now.add_secs(0x7FFF));
