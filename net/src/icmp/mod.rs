@@ -105,8 +105,8 @@ impl<A: App> Interface<A> {
 				buf.split_bytes(skip);
 
 				let errty = match code {
-					FragmentationRequired => IcmpErrorTy::DestinationUnreachable,
-					Unknown => IcmpErrorTy::FragmentationNeeded { next_hop_mtu },
+					FragmentationRequired => IcmpErrorTy::FragmentationNeeded { next_hop_mtu },
+					Unknown => IcmpErrorTy::DestinationUnreachable,
 				};
 
 				// Forward the packet header for processing.
