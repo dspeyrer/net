@@ -215,7 +215,7 @@ struct VarSlot {
 	item: VarItem,
 }
 
-pub(crate) type BoxedFnOnce<A> = Box<dyn FnOnce(&mut A, &mut Core<A>)>;
+pub(crate) type BoxedFnOnce<A> = Box<dyn FnOnce(&mut A, &mut Core<A>) + Send + 'static>;
 
 // Timers
 pub(crate) struct Timers<A> {

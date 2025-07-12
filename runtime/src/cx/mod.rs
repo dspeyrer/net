@@ -64,7 +64,7 @@ fn step_time(prev: &mut Instant) -> Duration {
 /// [`Stakker`]: struct.Stakker.html
 pub struct Core<A> {
 	now: Instant,
-	idle_queue: VecDeque<Box<dyn FnOnce(&mut A, &mut Core<A>)>>,
+	idle_queue: VecDeque<Box<dyn FnOnce(&mut A, &mut Core<A>) + Send>>,
 	timers: Timers<A>,
 	systime: SystemTime,
 	pub(crate) io: io::State<A>,
@@ -222,7 +222,7 @@ impl<A> Core<A> {
 	///
 	/// [`idle!`]: macro.idle.html
 	#[inline]
-	pub fn idle(&mut self, f: impl FnOnce(&mut A, &mut Core<A>) + 'static) {
+	pub fn idle(&mut self, f: impl FnOnce(&mut A, &mut Core<A>) + Send + 'static) {
 		self.idle_queue.push_back(Box::new(f));
 	}
 
@@ -233,7 +233,7 @@ impl<A> Core<A> {
 	///
 	/// [`after!`]: macro.after.html
 	#[inline]
-	pub fn after(&mut self, dur: Duration, f: impl FnOnce(&mut A, &mut Core<A>) + 'static) -> FixedTimerKey {
+	pub fn after(&mut self, dur: Duration, f: impl FnOnce(&mut A, &mut Core<A>) + Send + 'static) -> FixedTimerKey {
 		self.timers.add(self.now + dur, Box::new(f))
 	}
 
@@ -243,7 +243,7 @@ impl<A> Core<A> {
 	///
 	/// [`at!`]: macro.at.html
 	#[inline]
-	pub fn timer_add(&mut self, expiry: Instant, f: impl FnOnce(&mut A, &mut Core<A>) + 'static) -> FixedTimerKey {
+	pub fn timer_add(&mut self, expiry: Instant, f: impl FnOnce(&mut A, &mut Core<A>) + Send + 'static) -> FixedTimerKey {
 		self.timers.add(expiry, Box::new(f))
 	}
 
@@ -273,7 +273,7 @@ impl<A> Core<A> {
 	/// [`MaxTimerKey`]: struct.MaxTimerKey.html
 	/// [`timer_max!`]: macro.timer_max.html
 	#[inline]
-	pub fn timer_max_add(&mut self, expiry: Instant, f: impl FnOnce(&mut A, &mut Core<A>) + 'static) -> MaxTimerKey {
+	pub fn timer_max_add(&mut self, expiry: Instant, f: impl FnOnce(&mut A, &mut Core<A>) + Send + 'static) -> MaxTimerKey {
 		self.timers.add_max(expiry, Box::new(f))
 	}
 
@@ -313,7 +313,7 @@ impl<A> Core<A> {
 	}
 
 	#[inline]
-	pub fn timer_max(&mut self, key: &mut MaxTimerKey, expiry: Instant, f: impl FnOnce(&mut A, &mut Core<A>) + 'static) {
+	pub fn timer_max(&mut self, key: &mut MaxTimerKey, expiry: Instant, f: impl FnOnce(&mut A, &mut Core<A>) + Send + 'static) {
 		if !self.timer_max_upd(*key, expiry) {
 			*key = self.timer_max_add(expiry, f);
 		}

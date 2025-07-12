@@ -255,7 +255,7 @@ impl<A> Drop for State<A> {
 }
 
 struct Entry<A> {
-	cb: Option<Box<dyn FnMut(&mut A, &mut Core<A>, Result<Slice>)>>,
+	cb: Option<Box<dyn FnMut(&mut A, &mut Core<A>, Result<Slice>) + Send>>,
 	queue: VecDeque<Buf>,
 }
 
@@ -293,7 +293,7 @@ pub struct Io<T: AsRawFd> {
 }
 
 impl<T: AsRawFd> Io<T> {
-	pub fn new<A>(cx: &mut Core<A>, inner: T, cb: Box<dyn FnMut(&mut A, &mut Core<A>, Result<Slice>)>) -> Self {
+	pub fn new<A>(cx: &mut Core<A>, inner: T, cb: Box<dyn FnMut(&mut A, &mut Core<A>, Result<Slice>) + Send>) -> Self {
 		cx.io.fds.push(Poll { fd: as_raw(&inner), events: POLLIN, revents: 0 });
 		cx.io.entries.push(Entry { cb: Some(cb), queue: VecDeque::new() });
 
