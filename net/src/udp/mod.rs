@@ -2,7 +2,6 @@ use core::mem::size_of;
 use core::net::IpAddr;
 
 use collections::bytes::{Cursor, Slice};
-use log::warn;
 use runtime::Core;
 use utils::bytes::{self, Cast};
 use utils::endian::u16be;
@@ -61,7 +60,7 @@ impl<A: App> Interface<A> {
 			let v = csum.end();
 
 			if v != [0, 0] {
-				warn!("Packet with invalid UDP checksum");
+				log::warn!("Packet with invalid UDP checksum");
 				return;
 			}
 		}

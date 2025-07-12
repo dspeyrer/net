@@ -99,7 +99,7 @@ impl<A: App> crate::Interface<A> {
 		let proto = header.proto.get();
 		let rem = IpAddr::V4(remote);
 
-		if (start == 0 && !more) || icmp.is_none() {
+		if (start == 0 && !more) || icmp.is_some() {
 			// Process the packet regularly if it is not fragmented
 			Self::handle(app, cx, proto, rem, header.tos, buf, icmp);
 		} else {
