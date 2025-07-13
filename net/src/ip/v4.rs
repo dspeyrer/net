@@ -48,6 +48,11 @@ pub(super) struct Header {
 
 impl<A: App> crate::Interface<A> {
 	pub fn recv_v4(app: &mut A, cx: &mut Core<A>, buf: Slice, icmp: Option<IcmpErrorTy>) {
+		if buf.len() < size_of::<Header>() {
+			log::warn!("recieved IP packet with insufficient length");
+			return;
+		}
+
 		let header: &Header = buf.split();
 
 		let ip = app.net().ip.v4;

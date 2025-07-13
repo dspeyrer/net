@@ -34,6 +34,11 @@ struct Header {
 
 impl<A: App> crate::Interface<A> {
 	pub fn recv_v6(app: &mut A, cx: &mut Core<A>, buf: Slice) {
+		if buf.len() < size_of::<Header>() {
+			log::warn!("recieved IP packet with insufficient length");
+			return;
+		}
+
 		let header: &Header = buf.split();
 
 		let ver = header.ver.get();
