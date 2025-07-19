@@ -2,6 +2,7 @@ pub mod state;
 
 mod window;
 use core::mem;
+use core::time::Duration;
 use std::net::UdpSocket;
 
 use log::{info, warn};
@@ -81,12 +82,12 @@ impl Key for Peer {
 }
 
 impl Peer {
-	pub fn init(i: &Interface, idx: Index<1>, key: PublicKey, preshared: [u8; 32]) -> Self {
+	pub fn init(i: &Interface, idx: Index<1>, key: PublicKey, preshared: [u8; 32], persistent_keepalive: Option<Duration>) -> Self {
 		let hs = Noise::new(&i, key, preshared);
 
 		let this = Self {
 			wheel: Wheel::default(),
-			timers: Timers::new(idx),
+			timers: Timers::new(idx, persistent_keepalive),
 			queue: Vec::new(),
 			hs,
 		};

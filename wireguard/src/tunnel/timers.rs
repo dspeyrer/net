@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use collections::map::Index;
-use log::{debug, info, trace};
+use log::{info, trace};
 use rand::Rng;
 use runtime::{Core, FixedTimerKey, MaxTimerKey};
 
@@ -19,8 +19,12 @@ pub const REJECT_AFTER_TIME: Duration = Duration::from_secs(180);
 pub struct Timers {
 	/// When the rekey timer elapses, a new initiation message is sent to the peer. This is used both for the rekey cycle and for keepalive expirations.
 	rekey: MaxTimerKey,
-	/// When the keepalive timer elapses, an empty data packet (keepalive) is sent to the peer. If this field is equal to FixedTimerKey::default(), then there is no keepalive timer set.
+	/// When the keepalive timer elapses, an empty data packet (keepalive) is sent to the peer.
 	keepalive: FixedTimerKey,
+	/// The time that the next keepalive has been queued for.
+	next_keepalive: Option<Instant>,
+	/// The persistent keepalive interval, if any.
+	persistent_keepalive: Option<Duration>,
 	/// The timestamp when rekeying started. When the elapsed time since this timestamp exceeds `REKEY_ATTEMPT_TIME`, give up on rekeying.
 	rekey_start: Option<Instant>,
 	/// The index in the map of the peer this timer state belongs to.
@@ -28,10 +32,12 @@ pub struct Timers {
 }
 
 impl Timers {
-	pub fn new(idx: Index<1>) -> Self {
+	pub fn new(idx: Index<1>, persistent_keepalive: Option<Duration>) -> Self {
 		Self {
 			rekey: MaxTimerKey::default(),
 			keepalive: FixedTimerKey::default(),
+			next_keepalive: None,
+			persistent_keepalive,
 			rekey_start: None,
 			idx,
 		}
@@ -50,15 +56,22 @@ impl Timers {
 
 	/// Call when a data packet is sent.
 	pub fn send_data<A: App>(&mut self, cx: &mut Core<A>, is_keepalive: bool) {
-		if !is_keepalive {
-			// Delete the keepalive timer, since data has now been sent.
-			cx.timer_del(self.keepalive);
-			// Start the response timeout for rekeying.
-			self.reset_rekey(cx, KEEPALIVE_TIMEOUT + REKEY_TIMEOUT);
+		// Cancel the keepalive timer, since we just sent a packet instead.
+		cx.timer_del(self.keepalive);
+
+		if let Some(delay) = self.persistent_keepalive {
+			let next_keepalive = cx.now() + delay;
+			// If there is a persistent keepalive, then send a keepalive after its timeout.
+			self.keepalive = cx.after(delay, self.keepalive_fn());
+			self.next_keepalive = Some(next_keepalive);
+		} else {
+			self.next_keepalive = None;
 		}
 
-		// Clear the keepalive timer
-		self.keepalive = FixedTimerKey::default();
+		if !is_keepalive {
+			// Start the response timeout for rekeying if we don't get a response to a data packet.
+			self.reset_rekey(cx, KEEPALIVE_TIMEOUT + REKEY_TIMEOUT);
+		}
 	}
 
 	/// Call when a data packet is recieved.
@@ -69,8 +82,21 @@ impl Timers {
 		}
 
 		if !is_keepalive {
-			// Defer the sending of a keepalive packet if the recieved packet is not a keepalive packet
-			self.reset_keepalive(cx, KEEPALIVE_TIMEOUT);
+			// If the recieved packet is not a keepalive packet, the peer expects a response.
+			// Calculate the time we should send a keepalive.
+			let next_keepalive = cx.now() + KEEPALIVE_TIMEOUT;
+
+			// If there isn't a keepalive queued already, or it's queued for after we need it,
+			// then we need to set this keepalive.
+			if self.next_keepalive.is_none_or(|t| t > next_keepalive) {
+				// If there already is a keepalive timer set, clear it.
+				if self.next_keepalive.is_some() {
+					cx.timer_del(self.keepalive);
+				}
+				// Set the keepalive timer.
+				cx.timer_add(next_keepalive, self.keepalive_fn());
+				self.next_keepalive = Some(next_keepalive);
+			}
 		} else {
 			info!("Recieved keepalive packet");
 		}
@@ -93,8 +119,8 @@ impl Timers {
 		self.rekey_start = None;
 		// Delete the rekey timer
 		cx.timer_max_del(self.rekey);
-		// Defer sending a keepalive packet immediately if no other data is sent
-		self.reset_keepalive(cx, Duration::ZERO);
+		// Defer sending a keepalive packet immediately if no other data is sent to activate the connection.
+		self.keepalive = cx.timer_add(cx.now(), self.keepalive_fn());
 	}
 
 	/// Call when a response packet is sent.
@@ -103,14 +129,9 @@ impl Timers {
 	}
 
 	/// Defer sending a keepalive packet until `duration` elapses.
-	fn reset_keepalive<A: App>(&mut self, cx: &mut Core<A>, duration: Duration) {
-		if self.keepalive == FixedTimerKey::default() {
-			debug!("Setting keepalive timeout for {:?}", duration);
-
-			let idx = self.idx;
-
-			self.keepalive = cx.after(duration, move |app, cx| app.wireguard().send_keepalive(cx, idx))
-		}
+	fn keepalive_fn<A: App>(&self) -> impl FnOnce(&mut A, &mut Core<A>) + Send + 'static {
+		let idx = self.idx;
+		move |app, cx| app.wireguard().send_keepalive(cx, idx)
 	}
 
 	/// Defer rekeying until `duration` elapses.

@@ -7,6 +7,7 @@ mod tunnel;
 
 use core::mem::size_of;
 use core::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use core::time::Duration;
 use std::net::UdpSocket;
 
 use chacha20poly1305::Tag;
@@ -74,7 +75,14 @@ pub struct Wireguard {
 }
 
 impl Wireguard {
-	pub fn init<A: App>(cx: &mut Core<A>, addr: SocketAddr, s_priv: [u8; 32], p_pub: [u8; 32], q_pre: [u8; 32]) -> Self {
+	pub fn init<A: App>(
+		cx: &mut Core<A>,
+		addr: SocketAddr,
+		s_priv: [u8; 32],
+		p_pub: [u8; 32],
+		q_pre: [u8; 32],
+		persistent_keepalive: Option<Duration>,
+	) -> Self {
 		let socket: std::io::Result<UdpSocket> = try {
 			let socket = UdpSocket::bind::<SocketAddr>(match addr {
 				SocketAddr::V4(_) => SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into(),
@@ -98,7 +106,7 @@ impl Wireguard {
 		let p_pub = PublicKey::from(p_pub);
 
 		let slot = peers.insert_unique(&p_pub);
-		let peer = Peer::init(&interface, slot.index(), p_pub, q_pre);
+		let peer = Peer::init(&interface, slot.index(), p_pub, q_pre, persistent_keepalive);
 		slot.insert(peer);
 
 		Self { peers, interface }
@@ -122,6 +130,8 @@ impl Wireguard {
 	}
 
 	fn read<A: App>(app: &mut A, cx: &mut Core<A>, buf: Slice) {
+		log::info!("PACKET");
+
 		let _ = match *bytes::cast(&*buf) {
 			packet::Tag::INITIATION => app.wireguard().initiation(cx, buf),
 			packet::Tag::RESPONSE => app.wireguard().response(cx, buf),
