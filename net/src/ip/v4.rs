@@ -98,7 +98,7 @@ impl<A: App> crate::Interface<A> {
 
 		let frag = header.frg.get();
 
-		let start = frag.ofst().value();
+		let start = frag.ofst().value() * 8;
 		let more = frag.more();
 
 		let proto = header.proto.get();
