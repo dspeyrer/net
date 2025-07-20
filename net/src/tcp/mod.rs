@@ -342,7 +342,7 @@ impl<A: App> crate::Interface<A> {
 				bytes::cast_mut::<Header, _>(&mut *cur).csm = csm.end();
 
 				// Send the packet.
-				net.write(cx, res);
+				net.write(cx, res, true);
 			}
 			_ => todo!(),
 		}

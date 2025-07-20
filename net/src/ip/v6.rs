@@ -79,7 +79,7 @@ impl Interface {
 		header.dst = addr;
 	}
 
-	pub fn finalise_v6(cur: Cursor) {
+	pub fn finalise_v6(cur: Cursor, _df: bool) {
 		let hlen = cur.pivot();
 		let header: &mut Header = cur.cast();
 		header.len = (hlen as u16).into();

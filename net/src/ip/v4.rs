@@ -136,13 +136,13 @@ impl Interface {
 		header.dst = addr;
 	}
 
-	pub fn finalise_v4(mut cur: Cursor) {
+	pub fn finalise_v4(mut cur: Cursor, df: bool) {
 		let hlen = cur.pivot();
 
 		let header: &mut Header = bytes::cast_mut(&mut *cur);
 
 		header.len = (hlen as u16).into();
-		header.frg = Fragment::new(u13::new(0), false, true, 0).into();
+		header.frg = Fragment::new(u13::new(0), false, df, 0).into();
 
 		header.csm = Checksum::of(bytes::as_slice(header)).end();
 	}

@@ -102,7 +102,7 @@ impl<A: App> Interface<A> {
 		Packet { inner: buf, csum }
 	}
 
-	pub fn write_udp(&mut self, cx: &mut Core<A>, mut buf: Packet) {
+	pub fn write_udp(&mut self, cx: &mut Core<A>, mut buf: Packet, df: bool) {
 		let mut cur = buf.inner.cursor();
 
 		let pivot = cur.pivot();
@@ -115,6 +115,6 @@ impl<A: App> Interface<A> {
 
 		bytes::cast_mut::<Header, _>(&mut *cur).csum = buf.csum.end();
 
-		self.write(cx, buf.inner);
+		self.write(cx, buf.inner, df);
 	}
 }

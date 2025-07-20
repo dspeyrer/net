@@ -97,14 +97,14 @@ impl<A: App> crate::Interface<A> {
 		Packet { inner: buf, header }
 	}
 
-	pub(crate) fn write(&mut self, cx: &mut Core<A>, mut buf: Packet) {
+	pub(crate) fn write(&mut self, cx: &mut Core<A>, mut buf: Packet, df: bool) {
 		let mut cur = buf.inner.cursor();
 
 		let ver = bytes::cast::<Prefix, _>(&*cur).ver();
 
 		let _ = match ver {
-			Version::V4 => Interface::finalise_v4(cur.fork()),
-			Version::V6 => Interface::finalise_v6(cur.fork()),
+			Version::V4 => Interface::finalise_v4(cur.fork(), df),
+			Version::V6 => Interface::finalise_v6(cur.fork(), df),
 			Version::Unknown => unreachable!(),
 		};
 

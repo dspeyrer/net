@@ -97,7 +97,7 @@ impl<A: App> Resolver<A> {
 		cur.push(&BigEndian::from(CLASS_IN));
 
 		// Write the packet to the network.
-		net.write_udp(cx, buf);
+		net.write_udp(cx, buf, false);
 
 		cx.after(TIMEOUT, move |app, cx| {
 			let net = app.net();
