@@ -130,8 +130,6 @@ impl Wireguard {
 	}
 
 	fn read<A: App>(app: &mut A, cx: &mut Core<A>, buf: Slice) {
-		log::info!("PACKET");
-
 		let _ = match *bytes::cast(&*buf) {
 			packet::Tag::INITIATION => app.wireguard().initiation(cx, buf),
 			packet::Tag::RESPONSE => app.wireguard().response(cx, buf),
