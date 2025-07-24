@@ -56,15 +56,13 @@ impl Timers {
 
 	/// Call when a data packet is sent.
 	pub fn send_data<A: App>(&mut self, cx: &mut Core<A>, is_keepalive: bool) {
-		// Cancel the keepalive timer, since we just sent a packet instead.
-		cx.timer_del(self.keepalive);
-
 		if let Some(delay) = self.persistent_keepalive {
-			let next_keepalive = cx.now() + delay;
-			// If there is a persistent keepalive, then send a keepalive after its timeout.
-			self.keepalive = cx.after(delay, self.keepalive_fn());
-			self.next_keepalive = Some(next_keepalive);
-		} else {
+			// Push the keepalive timeout until after the persistent keepalive timer elapses.
+			self.schedule_keepalive(cx, cx.now() + delay);
+		} else if self.next_keepalive.is_some() {
+			// If there's no persistent keepalive, the cancel the keepalive timer,
+			// since we just sent a packet instead.
+			cx.timer_del(self.keepalive);
 			self.next_keepalive = None;
 		}
 
@@ -89,13 +87,8 @@ impl Timers {
 			// If there isn't a keepalive queued already, or it's queued for after we need it,
 			// then we need to set this keepalive.
 			if self.next_keepalive.is_none_or(|t| t > next_keepalive) {
-				// If there already is a keepalive timer set, clear it.
-				if self.next_keepalive.is_some() {
-					cx.timer_del(self.keepalive);
-				}
 				// Set the keepalive timer.
-				cx.timer_add(next_keepalive, self.keepalive_fn());
-				self.next_keepalive = Some(next_keepalive);
+				self.schedule_keepalive(cx, next_keepalive);
 			}
 		} else {
 			info!("Recieved keepalive packet");
@@ -120,7 +113,7 @@ impl Timers {
 		// Delete the rekey timer
 		cx.timer_max_del(self.rekey);
 		// Defer sending a keepalive packet immediately if no other data is sent to activate the connection.
-		self.keepalive = cx.timer_add(cx.now(), self.keepalive_fn());
+		self.schedule_keepalive(cx, cx.now());
 	}
 
 	/// Call when a response packet is sent.
@@ -128,10 +121,17 @@ impl Timers {
 		// No-op
 	}
 
-	/// Defer sending a keepalive packet until `duration` elapses.
-	fn keepalive_fn<A: App>(&self) -> impl FnOnce(&mut A, &mut Core<A>) + Send + 'static {
+	/// Update the keepalive timeout's expiry time.
+	fn schedule_keepalive<A: App>(&mut self, cx: &mut Core<A>, at: Instant) {
+		// Delete the existing timer, if there is one set.
+		if self.next_keepalive.is_some() {
+			cx.timer_del(self.keepalive);
+		}
+		// Schedule a new timer.
 		let idx = self.idx;
-		move |app, cx| app.wireguard().send_keepalive(cx, idx)
+		self.keepalive = cx.timer_add(at, move |app, cx| app.wireguard().send_keepalive(cx, idx));
+		// Store the time it will elapse.
+		self.next_keepalive = Some(at);
 	}
 
 	/// Defer rekeying until `duration` elapses.
