@@ -21,7 +21,7 @@ impl Buf {
 	}
 
 	/// Get a write cursor into the buffer.
-	pub fn cursor(&mut self) -> Cursor {
+	pub fn cursor(&mut self) -> Cursor<'_> {
 		Cursor { slice: &mut self.bytes, pivot: &mut self.filled }
 	}
 

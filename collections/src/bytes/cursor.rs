@@ -75,7 +75,7 @@ impl<'a> Cursor<'a> {
 
 	/// Returns a new `Buffer` limited to `len` bytes less than the total buffer size.
 	#[inline]
-	pub fn rlim(&mut self, len: usize) -> Cursor {
+	pub fn rlim(&mut self, len: usize) -> Cursor<'_> {
 		let idx = self.slice.len() - len;
 		Cursor { slice: &mut self.slice[..idx], pivot: self.pivot }
 	}
@@ -93,7 +93,7 @@ impl<'a> Cursor<'a> {
 
 	/// Returns a reference to a new buffer which shares a pivot point.
 	#[inline]
-	pub fn fork(&mut self) -> Cursor {
+	pub fn fork(&mut self) -> Cursor<'_> {
 		Cursor { slice: self.slice, pivot: self.pivot }
 	}
 }

@@ -47,7 +47,7 @@ where
 	}
 
 	#[must_use]
-	pub fn find_entry(&mut self, k: &T::Type) -> Entry<T, N> {
+	pub fn find_entry(&mut self, k: &T::Type) -> Entry<'_, T, N> {
 		let hash = self.hash.hash_one(k);
 		match self.core.find_or_find_insert(hash, |i| i.key() == k) {
 			Ok(idx) => Entry::Filled(Filled {
@@ -63,7 +63,7 @@ where
 	}
 
 	#[inline]
-	pub fn insert_unique(&mut self, k: &T::Type) -> Empty<T, N> {
+	pub fn insert_unique(&mut self, k: &T::Type) -> Empty<'_, T, N> {
 		let hash = self.hash.hash_one(k);
 		let idx = self.core.find_insert(hash);
 
