@@ -34,7 +34,7 @@ pub struct Packet {
 }
 
 impl Packet {
-	pub fn cursor(&mut self) -> Cursor {
+	pub fn cursor(&mut self) -> Cursor<'_> {
 		// Get a cursor to the underlying buffer.
 		let cur = self.inner.cursor();
 		// Split off the data header.

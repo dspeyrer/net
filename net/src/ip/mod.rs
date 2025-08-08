@@ -29,7 +29,7 @@ pub struct Packet {
 
 impl Packet {
 	/// Get a write cursor for the packet.
-	pub fn cursor(&mut self) -> Cursor {
+	pub fn cursor(&mut self) -> Cursor<'_> {
 		// Get the inner cursor.
 		let cur = self.inner.cursor();
 		// Split off the header bytes.
