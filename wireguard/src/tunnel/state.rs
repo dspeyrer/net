@@ -147,11 +147,11 @@ pub struct Next {
 }
 
 impl Next {
-	pub fn new<A>(cx: &mut Core<A>, chain: Chain, s_idx: u32, mac: Mac1) -> Self {
+	pub fn new<A>(cx: &mut Core<A>, chain: Chain, sidx: u32, mac: Mac1) -> Self {
 		let (recv, send) = chain.consume();
 
 		Self {
-			sidx: s_idx,
+			sidx,
 			mac,
 			skey: Aead::new(&send),
 			rkey: Aead::new(&recv),

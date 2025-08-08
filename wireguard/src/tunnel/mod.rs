@@ -138,7 +138,7 @@ impl Peer {
 	}
 
 	pub fn create_response<A: App>(&mut self, cx: &mut Core<A>, wg: &Interface, idx: u32, state: ResponderHandshake) -> Result {
-		self.wheel.next = Some((idx, self.hs.create_response(cx, wg, idx, state)?));
+		self.wheel.next = Some(self.hs.create_response(cx, wg, idx, state)?);
 		self.timers.send_resp(cx);
 		Ok(())
 	}
@@ -272,7 +272,7 @@ impl Noise {
 		Ok(SentHandshake { state, idx, mac })
 	}
 
-	fn create_response<A: App>(&mut self, cx: &mut Core<A>, wg: &Interface, rcv_idx: u32, state: ResponderHandshake) -> Result<Next> {
+	fn create_response<A: App>(&mut self, cx: &mut Core<A>, wg: &Interface, rcv_idx: u32, state: ResponderHandshake) -> Result<(u32, Next)> {
 		let mut vec = wg.link.buf();
 		let mut buf = vec.cursor();
 
@@ -280,8 +280,8 @@ impl Noise {
 		res.tag = Tag::RESPONSE;
 
 		let idx = self.new_idx();
-		res.idx = idx;
 
+		res.idx = idx;
 		res.rcv_idx = rcv_idx;
 
 		log::info!("Sent response packet 0x{:x}", idx);
@@ -291,7 +291,7 @@ impl Noise {
 
 		wg.link.write(cx, vec)?;
 
-		Ok(Next::new(cx, chain, idx, mac))
+		Ok((idx, Next::new(cx, chain, rcv_idx, mac)))
 	}
 
 	fn handle_response<A>(&self, cx: &mut Core<A>, state: &InitiatorHandshake, i: &Interface, msg: &mut Response) -> Result<Tunnel> {
