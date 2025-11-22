@@ -80,7 +80,7 @@ impl State {
 		// Check for overlap with the following fragment.
 		if let Some(next) = self.fragments.get(idx) {
 			// Check if this fragment is marked as the final fragment, but there is another one following it.
-			if fragment.more {
+			if !fragment.more {
 				return Err(fragment);
 			}
 
