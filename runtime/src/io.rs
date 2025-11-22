@@ -12,7 +12,7 @@ use crate::Core;
 mod sys {
 	pub use std::os::fd::{AsRawFd, RawFd};
 
-	pub use libc::{c_void as BufType, poll, pollfd as Poll, recv, send, POLLERR, POLLHUP, POLLIN, POLLNVAL, POLLOUT};
+	pub use libc::{recv, send, c_void as BufType, poll, pollfd as Poll, ENOBUFS, POLLERR, POLLHUP, POLLIN, POLLNVAL, POLLOUT};
 
 	pub fn as_raw<T: AsRawFd>(t: &T) -> RawFd {
 		t.as_raw_fd()
@@ -25,7 +25,7 @@ mod sys {
 
 	pub use u8 as BufType;
 	pub use windows_sys::Win32::Networking::WinSock::{
-		recv, send, WSAPoll as poll, POLLERR, POLLHUP, POLLNVAL, POLLRDNORM as POLLIN, POLLWRNORM as POLLOUT, SOCKET as RawFd, WSAPOLLFD as Poll,
+		recv, send, WSAPoll as poll, WSAPOLLFD as Poll, WSAENOBUFS as ENOBUFS, POLLERR, POLLHUP, POLLRDNORM as POLLIN, POLLNVAL, POLLWRNORM as POLLOUT, SOCKET as RawFd,
 	};
 
 	pub fn as_raw<T: AsRawFd>(t: &T) -> RawFd {
@@ -46,12 +46,13 @@ fn ret_to_err(val: isize) -> Result<Option<usize>> {
 		Ok(n) => Ok(Some(n)),
 		Err(_) => {
 			let err = io::Error::last_os_error();
+			let os = err.raw_os_error().unwrap();
 
-			if matches!(err.kind(), ErrorKind::WouldBlock) {
+			if matches!(err.kind(), ErrorKind::WouldBlock) || os == ENOBUFS {
 				return Ok(None);
 			}
 
-			error!("I/O operation failed: {err}");
+			error!("I/O operation failed: {err}, kind={:?}", err.kind());
 			Err(())
 		}
 	}

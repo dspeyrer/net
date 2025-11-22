@@ -49,7 +49,12 @@ impl<A: App> Interface<A> {
 			link,
 
 			#[cfg(feature = "pcap")]
-			pcap: pcap::Writer::new("./log.pcap").unwrap(),
+			pcap: pcap::Writer::new(&format!("./{}.pcap",
+				std::time::SystemTime::now()
+				.duration_since(std::time::SystemTime::UNIX_EPOCH)
+				.unwrap()
+				.as_secs()
+			)).unwrap(),
 
 			ip: ip::Interface::new(v4, v6),
 

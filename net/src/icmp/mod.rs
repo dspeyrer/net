@@ -112,7 +112,7 @@ impl<A: App> Interface<A> {
 				// Forward the packet header for processing.
 				Self::recv_v4(app, cx, buf, Some(errty));
 			}
-			Type::Unknown => log::debug!("received unknown ICMPv4 packet type"),
+			Type::Unknown => log::info!("received unknown ICMPv4 packet type"),
 		}
 	}
 }
