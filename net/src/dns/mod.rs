@@ -125,25 +125,25 @@ impl<A: App> Resolver<A> {
 			}
 		};
 
-		let flags = header.flags.get();
-
-		assert!(flags.qr());
-
-		// Expect there to be one resource record, which corresponds to an answer
-		assert_eq!(header.qdcount.get(), 1);
-
-		let ancount = header.ancount.get();
-
-		if ancount != 1 {
-			// Since we got a response, but we can't use it, clear the retry timer but do not call the callback.
-			cx.timer_del(entry.remove().retry);
-			log::warn!("Got DNS response for 0x{:x} with {} answers; ignoring.", header.id, ancount);
-
-			return;
+		macro_rules! expect {
+			($e:expr) => {
+				if !($e) {
+					log::warn!("expected {}", stringify!($e));
+					cx.timer_del(entry.remove().retry);
+					return;
+				}
+			};
 		}
 
-		assert_eq!(header.nscount.get(), 0);
-		assert_eq!(header.arcount.get(), 0);
+		let flags = header.flags.get();
+
+		expect!(flags.qr());
+
+		// Expect there to be one resource record, which corresponds to an answer
+		expect!(header.qdcount.get() == 1);
+		expect!(header.ancount.get() == 1);
+		expect!(header.nscount.get() == 0);
+		expect!(header.arcount.get() == 0);
 
 		macro_rules! skip_name {
 			() => {
@@ -179,9 +179,9 @@ impl<A: App> Resolver<A> {
 
 		let rr: &RR = buf.split();
 
-		assert!(rr.ty.get() == TY_A);
-		assert!(rr.class.get() == CLASS_IN);
-		assert!(rr.rdlength.get() == 4);
+		expect!(rr.ty.get() == TY_A);
+		expect!(rr.class.get() == CLASS_IN);
+		expect!(rr.rdlength.get() == 4);
 
 		let addr: &Ipv4Addr = buf.split();
 
