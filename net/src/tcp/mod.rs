@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_variables)]
+
 use core::net::IpAddr;
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;

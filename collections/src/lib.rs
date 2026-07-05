@@ -1,4 +1,4 @@
-#![feature(new_zeroed_alloc)]
+#![allow(dead_code)]
 
 pub mod bytes;
 pub mod map;
